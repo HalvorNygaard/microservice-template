@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Modern Microservice Template Contributors",
+  "classifications": ["Web", "ASP.NET", "Microservice", "Aspire", "Minimal API", "Vertical Slice"],
+  "identity": "ModernMicroservice.Template",
+  "name": "Modern Microservice",
+  "shortName": "modern-microservice",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "MicroserviceTemplate",
+  "preferNameDirectory": true,
+  "symbols": {
+    "ServiceName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "KeepAsIs",
+      "replaces": "MicroserviceTemplate",
+      "fileRename": "MicroserviceTemplate"
+    },
+    "ServiceName_Underscore": {
+      "type": "derived",
+      "valueSource": "ServiceName",
+      "valueTransform": "ServiceNameToUnderscore",
+      "replaces": "MicroserviceTemplate_AppHost"
+    },
+    "ServiceNameKebab": {
+      "type": "derived",
+      "valueSource": "ServiceName",
+      "valueTransform": "ServiceNameToKebab",
+      "replaces": "apiservice"
+    },
+    "ServiceHost": {
+      "type": "derived",
+      "valueSource": "ServiceNameKebab",
+      "valueTransform": "AppendDevLocalhost",
+      "replaces": "template.dev.localhost"
+    }
+  },
+  "forms": {
+    "KeepAsIs": {
+      "identifier": "identity"
+    },
+    "ServiceNameToUnderscore": {
+      "identifier": "chain",
+      "steps": [
+        "AppendAppHostSuffixUnderscore"
+      ]
+    },
+    "AppendAppHostSuffixUnderscore": {
+      "identifier": "replace",
+      "pattern": "^(.+)$",
+      "replacement": "$1_AppHost"
+    },
+    "ServiceNameToKebab": {
+      "identifier": "chain",
+      "steps": [
+        "ReplaceSeparatorsWithHyphen",
+        "InsertHyphen",
+        "ToLowerInvariant"
+      ]
+    },
+    "ReplaceSeparatorsWithHyphen": {
+      "identifier": "replace",
+      "pattern": "[\\._]",
+      "replacement": "-"
+    },
+    "InsertHyphen": {
+      "identifier": "replace",
+      "pattern": "([a-z])([A-Z])",
+      "replacement": "$1-$2"
+    },
+    "ToLowerInvariant": {
+      "identifier": "lowerCaseInvariant"
+    },
+    "AppendDevLocalhost": {
+      "identifier": "replace",
+      "pattern": "^(.+)$",
+      "replacement": "$1.dev.localhost"
+    }
+  },
+  "postActions": [
+    {
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages",
+      "manualInstructions": [
+        {
+          "text": "Run 'dotnet restore'"
+        }
+      ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
+    }
+  ]
+}

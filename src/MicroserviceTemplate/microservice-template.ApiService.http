@@ -1,0 +1,44 @@
+@ApiService_HostAddress = http://localhost:5471
+
+### Get all tasks
+GET {{ApiService_HostAddress}}/api/tasks
+Accept: application/json
+
+###
+
+### Get task by ID (replace with actual ID from get all)
+GET {{ApiService_HostAddress}}/api/tasks/00000000-0000-0000-0000-000000000000
+Accept: application/json
+
+###
+
+### Create a new task
+POST {{ApiService_HostAddress}}/api/tasks
+Content-Type: application/json
+
+{
+  "title": "New Task from HTTP Client",
+  "description": "This task was created using the HTTP client for testing",
+  "status": 0,
+  "dueDate": "2025-12-15T00:00:00Z"
+}
+
+###
+
+### Update a task (replace ID)
+PUT {{ApiService_HostAddress}}/api/tasks/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "title": "Updated Task Title",
+  "description": "This task has been updated with new information",
+  "status": 1,
+  "dueDate": "2025-12-20T00:00:00Z"
+}
+
+###
+
+### Delete a task (replace ID)
+DELETE {{ApiService_HostAddress}}/api/tasks/00000000-0000-0000-0000-000000000000
+
+###

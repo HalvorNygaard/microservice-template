@@ -1,0 +1,10 @@
+# Template-only files
+.template.config/**
+.github/**
+.aspire/**
+dist/**
+dist*/**
+tests/TemplateValidation.Tests/**
+nupkg/**
+.template-root
+vision.md

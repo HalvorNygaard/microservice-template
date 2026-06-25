@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoBuild>true</NoBuild>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <PackageType>Template</PackageType>
+    <PackageId>ModernMicroservice.Template</PackageId>
+    <Version>1.0.1</Version>
+    <Authors>Modern Microservice Template Contributors</Authors>
+    <Description>Modern .NET microservice template with Aspire.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>dotnet;aspire;microservice;minimal-api;template</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\**\*" Exclude="..\**\bin\**;..\**\obj\**;..\**\.git\**;..\**\.vs\**;..\**\.idea\**;..\**\.vscode\**;..\**\template\**;..\README.md;..\vision.md;..\**\*.user;..\**\*.suo;..\**\*.nupkg;..\**\*.snupkg;..\**\nul;..\dist\**;..\dist*\**;..\tests\TemplateValidation.Tests\**;..\.github\**;..\.aspire\**" Pack="true" PackagePath="content" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="README.template.md" Pack="true" PackagePath="content/README.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include=".template.config\**" Pack="true" PackagePath="content\.template.config" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>
