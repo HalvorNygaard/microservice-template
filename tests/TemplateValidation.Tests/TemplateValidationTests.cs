@@ -225,10 +225,10 @@ public class TemplateValidationTests
     {
         var appHost = ReadTextFile(Path.Combine(outputPath, "src", $"{TestServiceName}.AppHost", "AppHost.cs"));
 
-        appHost.ShouldContain($"builder.AddProject<Projects.{TestServiceName}>(\"{TestServiceKebabName}\")");
+        appHost.ShouldContain($"builder.AddProject<Projects.{TestServiceName}>(\"{TestServiceKebabName}\", launchProfileName: \"http\")");
         appHost.ShouldContain(".WithReference(cache).WaitFor(cache)");
         appHost.ShouldContain(".WithReference(postgresdb).WaitFor(postgresdb)");
-        appHost.ShouldContain(".WithHttpHealthCheck(\"/health\")");
+        appHost.ShouldContain(".WithHttpHealthCheck(\"/health\", endpointName: \"http\")");
     }
 
     private static void AssertGeneratedLaunchSettings(string outputPath)

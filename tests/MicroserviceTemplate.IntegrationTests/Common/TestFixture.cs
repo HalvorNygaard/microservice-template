@@ -8,6 +8,7 @@ namespace MicroserviceTemplate.Tests.Common;
 public class IntegrationTestFixture : IAsyncInitializer, IAsyncDisposable
 {
     private const string ApiServiceName = "apiservice";
+    private const string ApiEndpointName = "http";
     private const string PostgresDbName = "postgresdb";
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(3);
 
@@ -33,7 +34,7 @@ public class IntegrationTestFixture : IAsyncInitializer, IAsyncDisposable
         app = await appHost.BuildAsync();
         await app.StartAsync().WaitAsync(DefaultTimeout);
 
-        Client = app.CreateHttpClient(ApiServiceName);
+        Client = app.CreateHttpClient(ApiServiceName, ApiEndpointName);
         await app.ResourceNotifications.WaitForResourceHealthyAsync(ApiServiceName).WaitAsync(DefaultTimeout);
 
         await EnsureDatabaseReadyAsync();
