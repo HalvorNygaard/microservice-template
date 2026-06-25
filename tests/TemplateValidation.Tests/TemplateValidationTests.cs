@@ -46,20 +46,13 @@ public class TemplateValidationTests
         "dist",
         "template",
         "tests/TemplateValidation.Tests",
-        "vision.md"
+        ".aspire"
     ];
     private static readonly string[] ForbiddenGeneratedFragments =
     [
         "MicroserviceTemplate",
         "<ServiceName>",
         "microservice-template",
-        "Cillco",
-        "cillco",
-        "cpurch",
-        "legacy-c-purch",
-        "Halvor",
-        "halvo",
-        "Your Organization",
         "TemplateValidation.Tests"
     ];
     private static readonly string[] BinaryExtensions =

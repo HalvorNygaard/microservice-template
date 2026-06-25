@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build MicroserviceTemplate.slnx
+
+      - name: Test service
+        run: dotnet test --solution MicroserviceTemplate.slnx --no-build
+
+      - name: Test template generation
+        run: dotnet test --project tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj

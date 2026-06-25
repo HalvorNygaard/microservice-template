@@ -7,4 +7,3 @@ dist*/**
 tests/TemplateValidation.Tests/**
 nupkg/**
 .template-root
-vision.md

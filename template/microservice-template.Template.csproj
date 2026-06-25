@@ -18,7 +18,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="..\**\*" Exclude="..\**\bin\**;..\**\obj\**;..\**\.git\**;..\**\.vs\**;..\**\.idea\**;..\**\.vscode\**;..\**\template\**;..\README.md;..\vision.md;..\**\*.user;..\**\*.suo;..\**\*.nupkg;..\**\*.snupkg;..\**\nul;..\dist\**;..\dist*\**;..\tests\TemplateValidation.Tests\**;..\.github\**;..\.aspire\**" Pack="true" PackagePath="content" />
+    <Content Include="..\**\*" Exclude="..\**\bin\**;..\**\obj\**;..\**\.git\**;..\**\.vs\**;..\**\.idea\**;..\**\.vscode\**;..\**\template\**;..\README.md;..\**\*.user;..\**\*.suo;..\**\*.nupkg;..\**\*.snupkg;..\**\nul;..\dist\**;..\dist*\**;..\tests\TemplateValidation.Tests\**;..\.github\**;..\.aspire\**" Pack="true" PackagePath="content" />
   </ItemGroup>
 
   <ItemGroup>
