@@ -117,11 +117,21 @@ The template validation test packs the template, installs it locally, generates 
 
 This repository includes CI for build, service tests, and template generation tests.
 
-When you are ready to publish the template package, pack it and push the `.nupkg` to your preferred NuGet feed:
+Package publishing is intentionally manual. To publish to GitHub Packages, run the `Release package` workflow from the GitHub Actions tab and provide the package version, for example `1.0.0`.
+
+The workflow will build, test, pack, and push:
+
+```text
+ModernMicroservice.Template.<version>.nupkg
+```
+
+You can also pack locally:
 
 ```bash
 dotnet pack -c Release template/microservice-template.Template.csproj
 ```
+
+GitHub Packages may require NuGet authentication when installing packages, even for public repositories. NuGet.org is usually smoother if you want the template to be easy for anyone to install.
 
 ## License
 
