@@ -13,6 +13,11 @@ public static class RateLimitingSetup
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddOptions<RateLimitingOptions>()
+            .BindConfiguration(RateLimitingOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         var rateLimitOptions = configuration
             .GetSection(RateLimitingOptions.SectionName)
             .Get<RateLimitingOptions>() ?? new RateLimitingOptions();

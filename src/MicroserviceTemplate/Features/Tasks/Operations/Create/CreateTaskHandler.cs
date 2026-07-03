@@ -1,5 +1,7 @@
+using System.Diagnostics;
+using MicroserviceTemplate.Common;
+using MicroserviceTemplate.Features.Tasks;
 using MicroserviceTemplate.Features.Tasks.Models;
-using MicroserviceTemplate.Features.Tasks.Services.Abstractions;
 using MicroserviceTemplate.Infrastructure.Data;
 using Microsoft.Extensions.Logging;
 
@@ -7,29 +9,34 @@ namespace MicroserviceTemplate.Features.Tasks.Operations.Create;
 
 public sealed class CreateTaskHandler(
     ApplicationDbContext dbContext,
-    ITaskCacheService taskCache,
     ILogger<CreateTaskHandler> logger)
 {
     public async Task<CreateTaskResponse> Handle(
         CreateTaskRequest request,
         CancellationToken cancellationToken)
     {
-        var task = new TaskItem
+        var stopwatch = Stopwatch.StartNew();
+        return await TaskObservability.StartTaskActivity("create").ObserveAsync(async activity =>
         {
-            Title = request.Title,
-            Description = request.Description,
-            Status = request.Status,
-            DueDate = request.DueDate
-        };
+            var task = new TaskItem
+            {
+                Title = request.Title,
+                Description = request.Description,
+                Status = request.Status,
+                DueDate = request.DueDate
+            };
 
-        dbContext.Tasks.Add(task);
-        await dbContext.SaveChangesAsync(cancellationToken);
+            dbContext.Tasks.Add(task);
+            await dbContext.SaveChangesAsync(cancellationToken);
 
-        await taskCache.InvalidateListAsync(cancellationToken);
+            string status = task.Status.ToString();
+            activity.SetOutcome("created");
+            TaskObservability.RecordTaskCreated(status);
+            TaskObservability.RecordTaskOperationDuration("create", stopwatch.Elapsed);
+            logger.TaskCreated(task.Id, status);
 
-        logger.LogInformation("Created task {TaskId} with title '{Title}'", task.Id, task.Title);
-
-        return ToResponse(task);
+            return ToResponse(task);
+        });
     }
 
     private static CreateTaskResponse ToResponse(TaskItem task) => new(

@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup Label="Analyzers">
-    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.114" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.117" />
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.301" />
   </ItemGroup>
   <ItemGroup Label="Microsoft.Extensions">
@@ -44,13 +44,14 @@
     <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
   </ItemGroup>
   <ItemGroup Label="API">
-    <PackageVersion Include="Scalar.AspNetCore" Version="2.16.5" />
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.9.0" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.16.7" />
   </ItemGroup>
   <ItemGroup Label="Testing">
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
-    <PackageVersion Include="TUnit" Version="1.56.35" />
-    <PackageVersion Include="TUnit.Core" Version="1.56.35" />
+    <PackageVersion Include="TUnit" Version="1.58.0" />
+    <PackageVersion Include="TUnit.Core" Version="1.58.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
   </ItemGroup>
 </Project>

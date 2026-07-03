@@ -15,6 +15,7 @@ internal sealed class GlobalExceptionHandler(
     {
         var (problemDetails, logLevel) = exception switch
         {
+            ApplicationProblemException applicationProblem => (applicationProblem.ToProblemDetails(), LogLevel.Warning),
             BadHttpRequestException => (CreateProblemDetails(
                 StatusCodes.Status400BadRequest,
                 "Invalid Request",
@@ -53,16 +54,23 @@ internal sealed class GlobalExceptionHandler(
                 "Server.Error"), LogLevel.Error)
         };
 
-        logger.Log(logLevel, exception,
-            "Exception handled: {ExceptionType}. TraceId={TraceId} Path={Path}",
-            exception.GetType().Name, httpContext.TraceIdentifier, httpContext.Request.Path);
+        logger.ExceptionHandled(
+            logLevel,
+            exception,
+            exception.GetType().Name,
+            httpContext.TraceIdentifier,
+            httpContext.Request.Path.Value ?? "/");
+
+        int statusCode = problemDetails.Status ?? StatusCodes.Status500InternalServerError;
+        string errorType = problemDetails.Extensions["errorType"]?.ToString() ?? "Unknown";
+        GlobalExceptionHandlerObservability.RecordExceptionHandled(statusCode, errorType);
+        GlobalExceptionHandlerObservability.EnrichCurrentActivity(statusCode, errorType);
 
         problemDetails.Extensions["traceId"] = httpContext.TraceIdentifier;
 
-        httpContext.Response.StatusCode = problemDetails.Status ?? StatusCodes.Status500InternalServerError;
+        httpContext.Response.StatusCode = statusCode;
         httpContext.Response.ContentType = "application/problem+json";
-
-        await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
+        await JsonSerializer.SerializeAsync(httpContext.Response.Body, problemDetails, cancellationToken: cancellationToken);
 
         return true;
     }

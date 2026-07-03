@@ -1,6 +1,5 @@
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using MicroserviceTemplate.Common.Http;
 using MicroserviceTemplate.Features.Tasks.Operations.Create;
 using MicroserviceTemplate.Features.Tasks.Operations.List;
 using MicroserviceTemplate.Features.Tasks.Operations.Read;
@@ -13,11 +12,6 @@ namespace MicroserviceTemplate.Tests;
 [ClassDataSource<IntegrationTestFixture>(Shared = SharedType.PerTestSession)]
 public class TasksCrudTests(IntegrationTestFixture fixture)
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter() }
-    };
-
     private HttpClient HttpClient => fixture.Client;
 
     [Test]
@@ -27,10 +21,37 @@ public class TasksCrudTests(IntegrationTestFixture fixture)
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var tasks = await response.Content.ReadFromJsonAsync<List<ListTasksResponse>>(JsonOptions);
-        tasks.ShouldNotBeNull();
-        tasks.ShouldNotBeEmpty();
-        tasks[0].Title.ShouldNotBeNullOrWhiteSpace();
+        var page = await IntegrationTestFixture.ReadAsync<PagedResult<ListTasksResponse>>(response);
+        page.Items.ShouldNotBeEmpty();
+        page.PageNumber.ShouldBe(1);
+        page.PageSize.ShouldBe(20);
+        page.TotalCount.ShouldBeGreaterThanOrEqualTo(page.Items.Count);
+        page.Items[0].Title.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Test]
+    public async Task GetAllTasks_WhenPageSizeIsTooLarge_ClampsPageSize()
+    {
+        var response = await HttpClient.GetAsync("/api/tasks?pageSize=500");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var page = await IntegrationTestFixture.ReadAsync<PagedResult<ListTasksResponse>>(response);
+        page.PageSize.ShouldBe(100);
+        page.Items.Count.ShouldBeLessThanOrEqualTo(100);
+    }
+
+    [Test]
+    public async Task GetAllTasks_WhenPageNumberIsTooLarge_ClampsPageNumber()
+    {
+        var response = await HttpClient.GetAsync("/api/tasks?pageNumber=2147483647&pageSize=100");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var page = await IntegrationTestFixture.ReadAsync<PagedResult<ListTasksResponse>>(response);
+        page.PageNumber.ShouldBe(ListTasksRequest.MaxPageNumber);
+        page.PageSize.ShouldBe(ListTasksRequest.MaxPageSize);
+        page.Items.ShouldBeEmpty();
     }
 
     [Test]
@@ -43,7 +64,7 @@ public class TasksCrudTests(IntegrationTestFixture fixture)
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         response.Headers.Location?.ToString().ShouldStartWith("/api/tasks/");
 
-        var created = await response.Content.ReadFromJsonAsync<CreateTaskResponse>(JsonOptions);
+        var created = await IntegrationTestFixture.ReadAsync<CreateTaskResponse>(response);
         AssertCreatedTask(created, request);
     }
 
@@ -57,7 +78,7 @@ public class TasksCrudTests(IntegrationTestFixture fixture)
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var task = await response.Content.ReadFromJsonAsync<ReadTaskResponse>(JsonOptions);
+        var task = await IntegrationTestFixture.ReadAsync<ReadTaskResponse>(response);
         AssertTask(task, request, created.Id);
     }
 
@@ -76,7 +97,7 @@ public class TasksCrudTests(IntegrationTestFixture fixture)
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var updated = await response.Content.ReadFromJsonAsync<UpdateTaskResponse>(JsonOptions);
+        var updated = await IntegrationTestFixture.ReadAsync<UpdateTaskResponse>(response);
         updated.ShouldNotBeNull();
         updated.Id.ShouldBe(created.Id);
         updated.Title.ShouldBe(updateRequest.Title);
@@ -150,13 +171,10 @@ public class TasksCrudTests(IntegrationTestFixture fixture)
 
     private async Task<CreateTaskResponse> CreateTaskAsync(CreateTaskRequest request)
     {
-        var response = await HttpClient.PostAsJsonAsync("/api/tasks", request);
-        response.StatusCode.ShouldBe(HttpStatusCode.Created);
-
-        var created = await response.Content.ReadFromJsonAsync<CreateTaskResponse>(JsonOptions);
+        var created = await fixture.PostAsync<CreateTaskResponse>("/api/tasks", request, HttpStatusCode.Created);
         AssertCreatedTask(created, request);
 
-        return created!;
+        return created;
     }
 
     private static CreateTaskRequest CreateTaskRequest(

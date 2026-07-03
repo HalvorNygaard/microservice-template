@@ -70,22 +70,50 @@ Features/
       Update/
       Delete/
     Services/
+    TaskEndpoints.cs
     TaskFeature.cs
+    TaskObservability.cs
 ```
 
-Each operation keeps its handler, request, and response types together.
+Each operation keeps its handler, request, and response types together. `TaskFeature.cs` registers feature services, while `TaskEndpoints.cs` maps `/api/tasks` routes and applies the shared `api` rate-limit policy.
+
+Reusable startup and cross-cutting code uses this shape:
+
+```text
+Common/
+  MicroserviceTelemetry.cs
+  Http/
+    ApplicationProblemException.cs
+    EndpointMetadataExtensions.cs
+    GlobalExceptionHandler.cs
+    GlobalExceptionHandlerObservability.cs
+    PagedResult.cs
+Configurations/
+  Options/
+  Setup/
+    DevelopmentSetup.cs
+    MicroserviceSetup.cs
+    RateLimitingSetup.cs
+Infrastructure/
+  Data/
+```
+
+`Program.cs` stays small by composing setup extensions. Development-only OpenAPI, Scalar, root redirect, and database migration setup live in `Configurations/Setup/DevelopmentSetup.cs`.
 
 ## Included Defaults
 
 - Minimal API endpoint groups
 - Request validation with `Microsoft.Extensions.Validation`
 - Problem Details and a small global exception handler
+- reusable application ProblemDetails exceptions for expected failures
+- OpenAPI response metadata helpers for common problem responses
+- bounded `PagedResult<T>` list responses
 - Basic fixed-window rate limiting
 - `/alive` and `/health` checks
 - Scalar/OpenAPI in development
 - EF Core with PostgreSQL
 - Redis distributed cache
-- OpenTelemetry logs, traces, and metrics
+- OpenTelemetry logs, traces, and metrics with service resource attributes, OTLP exporter support, configurable trace sampling, and reusable feature telemetry helpers
 - HTTP client service discovery and standard resilience handlers
 - TUnit, Microsoft Testing Platform, Shouldly, and Aspire integration testing
 
@@ -106,12 +134,14 @@ dotnet build MicroserviceTemplate.slnx
 
 dotnet test --solution MicroserviceTemplate.slnx
 
+dotnet test --project tests/MicroserviceTemplate.IntegrationTests/MicroserviceTemplate.IntegrationTests.csproj
+
 dotnet test --project tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj
 ```
 
 The integration tests require Docker because they start the Aspire AppHost with PostgreSQL and Redis.
 
-The template validation test packs the template, installs it locally, generates a new service, builds that generated service, and runs its generated integration tests.
+The template validation test packs the template, installs it locally, generates a new service, verifies token replacement, builds that generated service, and runs its generated integration tests.
 
 ## Publishing
 

@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using MicroserviceTemplate.Common;
+using MicroserviceTemplate.Features.Tasks;
 using MicroserviceTemplate.Features.Tasks.Models;
 using MicroserviceTemplate.Features.Tasks.Services.Abstractions;
 using MicroserviceTemplate.Infrastructure.Data;
@@ -15,26 +18,37 @@ public sealed class UpdateTaskHandler(
         UpdateTaskRequest request,
         CancellationToken cancellationToken)
     {
-        var task = await dbContext.Tasks.FindAsync([id], cancellationToken);
-
-        if (task is null)
+        var stopwatch = Stopwatch.StartNew();
+        return await TaskObservability.StartTaskActivity("update").ObserveAsync(async activity =>
         {
-            return null;
-        }
+            var task = await dbContext.Tasks.FindAsync([id], cancellationToken);
 
-        task.Title = request.Title;
-        task.Description = request.Description;
-        task.Status = request.Status;
-        task.DueDate = request.DueDate;
-        task.UpdateTimestamp();
+            if (task is null)
+            {
+                activity.SetOutcome("not_found");
+                TaskObservability.RecordTaskChanged("update", "not_found");
+                TaskObservability.RecordTaskOperationDuration("update", stopwatch.Elapsed);
+                return null;
+            }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+            task.Title = request.Title;
+            task.Description = request.Description;
+            task.Status = request.Status;
+            task.DueDate = request.DueDate;
+            task.UpdateTimestamp();
 
-        await taskCache.InvalidateTaskAsync(id, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Updated task {TaskId}", task.Id);
+            await taskCache.InvalidateTaskAsync(id, cancellationToken);
 
-        return ToResponse(task);
+            string status = task.Status.ToString();
+            activity.SetOutcome("updated");
+            TaskObservability.RecordTaskChanged("update", "updated", status);
+            TaskObservability.RecordTaskOperationDuration("update", stopwatch.Elapsed);
+            logger.TaskUpdated(task.Id, status);
+
+            return ToResponse(task);
+        });
     }
 
     private static UpdateTaskResponse ToResponse(TaskItem task) => new(

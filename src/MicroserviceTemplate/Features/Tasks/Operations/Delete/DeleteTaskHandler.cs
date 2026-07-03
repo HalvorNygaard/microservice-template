@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using MicroserviceTemplate.Common;
+using MicroserviceTemplate.Features.Tasks;
 using MicroserviceTemplate.Features.Tasks.Services.Abstractions;
 using MicroserviceTemplate.Infrastructure.Data;
 using Microsoft.Extensions.Logging;
@@ -13,20 +16,30 @@ public sealed class DeleteTaskHandler(
         DeleteTaskRequest request,
         CancellationToken cancellationToken)
     {
-        var task = await dbContext.Tasks.FindAsync([request.Id], cancellationToken);
-
-        if (task is null)
+        var stopwatch = Stopwatch.StartNew();
+        return await TaskObservability.StartTaskActivity("delete").ObserveAsync(async activity =>
         {
-            return false;
-        }
+            var task = await dbContext.Tasks.FindAsync([request.Id], cancellationToken);
 
-        dbContext.Tasks.Remove(task);
-        await dbContext.SaveChangesAsync(cancellationToken);
+            if (task is null)
+            {
+                activity.SetOutcome("not_found");
+                TaskObservability.RecordTaskChanged("delete", "not_found");
+                TaskObservability.RecordTaskOperationDuration("delete", stopwatch.Elapsed);
+                return false;
+            }
 
-        await taskCache.InvalidateTaskAsync(request.Id, cancellationToken);
+            dbContext.Tasks.Remove(task);
+            await dbContext.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Deleted task {TaskId}", request.Id);
+            await taskCache.InvalidateTaskAsync(request.Id, cancellationToken);
 
-        return true;
+            activity.SetOutcome("deleted");
+            TaskObservability.RecordTaskChanged("delete", "deleted");
+            TaskObservability.RecordTaskOperationDuration("delete", stopwatch.Elapsed);
+            logger.TaskDeleted(request.Id);
+
+            return true;
+        });
     }
 }

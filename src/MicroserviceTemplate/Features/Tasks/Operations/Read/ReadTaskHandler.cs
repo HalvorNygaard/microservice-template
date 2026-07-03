@@ -1,5 +1,8 @@
+using System.Diagnostics;
 using System.Linq.Expressions;
 using System.Text.Json;
+using MicroserviceTemplate.Common;
+using MicroserviceTemplate.Features.Tasks;
 using MicroserviceTemplate.Features.Tasks.Models;
 using MicroserviceTemplate.Features.Tasks.Services.Abstractions;
 using MicroserviceTemplate.Infrastructure.Data;
@@ -24,24 +27,44 @@ public sealed class ReadTaskHandler(
         ReadTaskRequest request,
         CancellationToken cancellationToken)
     {
-        var cached = await taskCache.GetTaskAsync(request.Id, cancellationToken);
-        if (cached is not null)
+        var stopwatch = Stopwatch.StartNew();
+        return await TaskObservability.StartTaskActivity("read").ObserveAsync(async activity =>
         {
-            return JsonSerializer.Deserialize<ReadTaskResponse>(cached);
-        }
+            var cached = await taskCache.GetTaskAsync(request.Id, cancellationToken);
+            if (cached is not null)
+            {
+                var cachedTask = JsonSerializer.Deserialize<ReadTaskResponse>(cached);
+                activity?.SetTag(MicroserviceTelemetry.CacheHitAttributeName, true);
+                activity?.SetTag(MicroserviceTelemetry.ResultCountAttributeName, cachedTask is null ? 0 : 1);
+                activity.SetOutcome(cachedTask is null ? "not_found" : "cache_hit");
+                TaskObservability.RecordTaskQuery(cachedTask is null ? 0 : 1, cacheHit: true);
+                TaskObservability.RecordTaskOperationDuration("read", stopwatch.Elapsed);
+                return cachedTask;
+            }
 
-        var dto = await dbContext.Tasks
-            .Where(task => task.Id == request.Id)
-            .Select(ToResponseProjection)
-            .FirstOrDefaultAsync(cancellationToken);
+            var dto = await dbContext.Tasks
+                .Where(task => task.Id == request.Id)
+                .Select(ToResponseProjection)
+                .FirstOrDefaultAsync(cancellationToken);
 
-        if (dto is null)
-        {
-            return null;
-        }
+            if (dto is null)
+            {
+                activity?.SetTag(MicroserviceTelemetry.CacheHitAttributeName, false);
+                activity?.SetTag(MicroserviceTelemetry.ResultCountAttributeName, 0);
+                activity.SetOutcome("not_found");
+                TaskObservability.RecordTaskQuery(0, cacheHit: false);
+                TaskObservability.RecordTaskOperationDuration("read", stopwatch.Elapsed);
+                return null;
+            }
 
-        await taskCache.SetTaskAsync(request.Id, JsonSerializer.Serialize(dto), cancellationToken);
+            await taskCache.SetTaskAsync(request.Id, JsonSerializer.Serialize(dto), cancellationToken);
 
-        return dto;
+            activity?.SetTag(MicroserviceTelemetry.CacheHitAttributeName, false);
+            activity?.SetTag(MicroserviceTelemetry.ResultCountAttributeName, 1);
+            activity.SetOutcome("database");
+            TaskObservability.RecordTaskQuery(1, cacheHit: false);
+            TaskObservability.RecordTaskOperationDuration("read", stopwatch.Elapsed);
+            return dto;
+        });
     }
 }

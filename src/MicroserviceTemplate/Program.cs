@@ -1,4 +1,3 @@
-using Scalar.AspNetCore;
 using System.Text.Json.Serialization;
 using MicroserviceTemplate.Common.Http;
 using MicroserviceTemplate.Configurations.Options;
@@ -22,38 +21,18 @@ builder.Services.AddOptions<CacheOptions>()
     .BindConfiguration(CacheOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
-builder.Services.AddOptions<RateLimitingOptions>()
-    .BindConfiguration(RateLimitingOptions.SectionName)
-    .ValidateDataAnnotations()
-    .ValidateOnStart();
 
 builder.AddMicroserviceDefaults();
-
 builder.AddApplicationData();
 
 builder.Services.AddTasks();
 
-var app = builder.Build();
-
-await app.ConfigureDevAsync();
+WebApplication app = builder.Build();
 
 app.UseMicroserviceDefaults();
 app.UseRateLimiter();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-    app.MapScalarApiReference(options =>
-    {
-        options.WithTitle("MicroserviceTemplate");
-        options.WithTheme(ScalarTheme.BluePlanet);
-    });
-    app.MapGet("/", () => Results.Redirect("/scalar/v1")).ExcludeFromDescription();
-}
-else
-{
-    app.MapGet("/", () => TypedResults.Ok(new { service = app.Environment.ApplicationName }));
-}
+await app.ConfigureDevelopmentSetupAsync();
 
 app.MapTasks();
 

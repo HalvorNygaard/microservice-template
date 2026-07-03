@@ -1,5 +1,7 @@
 using Aspire.Hosting;
 using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Npgsql;
 using TUnit.Core.Interfaces;
 
@@ -10,10 +12,18 @@ public class IntegrationTestFixture : IAsyncInitializer, IAsyncDisposable
     private const string ApiServiceName = "apiservice";
     private const string ApiEndpointName = "http";
     private const string PostgresDbName = "postgresdb";
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan AppHostTimeout = IsContinuousIntegration
+        ? TimeSpan.FromMinutes(5)
+        : TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan DockerProbeTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DatabaseReadyTimeout = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan DatabasePollInterval = TimeSpan.FromSeconds(2);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     private DistributedApplication? app;
-    private string? postgresConnectionString;
 
     public HttpClient Client { get; private set; } = null!;
 
@@ -24,27 +34,87 @@ public class IntegrationTestFixture : IAsyncInitializer, IAsyncDisposable
             TUnit.Core.Skip.Test("Docker is required for integration tests. Start Docker to run these tests.");
         }
 
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.MicroserviceTemplate_AppHost>();
+        using CancellationTokenSource timeout = new(AppHostTimeout);
+        IDistributedApplicationTestingBuilder appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.MicroserviceTemplate_AppHost>(
+            cancellationToken: timeout.Token);
 
         appHost.Services.ConfigureHttpClientDefaults(clientBuilder =>
         {
             clientBuilder.AddStandardResilienceHandler();
         });
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.AddConsole();
+            logging.AddFilter("Default", LogLevel.Information);
+            logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+            logging.AddFilter("Aspire.Hosting.Dcp", LogLevel.Warning);
+        });
 
-        app = await appHost.BuildAsync();
-        await app.StartAsync().WaitAsync(DefaultTimeout);
+        app = await appHost.BuildAsync(timeout.Token)
+            .WaitAsync(AppHostTimeout, timeout.Token);
+        await app.StartAsync(timeout.Token)
+            .WaitAsync(AppHostTimeout, timeout.Token);
 
         Client = app.CreateHttpClient(ApiServiceName, ApiEndpointName);
-        await app.ResourceNotifications.WaitForResourceHealthyAsync(ApiServiceName).WaitAsync(DefaultTimeout);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync(ApiServiceName, timeout.Token);
 
         await EnsureDatabaseReadyAsync();
+    }
+
+    public Task<T> PostAsync<T>(string url, object body, HttpStatusCode expectedStatusCode = HttpStatusCode.OK)
+        where T : class
+        => SendAndReadAsync<T>(HttpMethod.Post, url, body, expectedStatusCode);
+
+    public Task<T> PutAsync<T>(string url, object body, HttpStatusCode expectedStatusCode = HttpStatusCode.OK)
+        where T : class
+        => SendAndReadAsync<T>(HttpMethod.Put, url, body, expectedStatusCode);
+
+    public Task<T> GetAsync<T>(string url, HttpStatusCode expectedStatusCode = HttpStatusCode.OK)
+        where T : class
+        => SendAndReadAsync<T>(HttpMethod.Get, url, null, expectedStatusCode);
+
+    public Task<HttpResponseMessage> SendAsJsonAsync(HttpMethod method, string url, object body)
+    {
+        HttpRequestMessage request = new(method, url)
+        {
+            Content = JsonContent.Create(body, options: JsonOptions)
+        };
+        return Client.SendAsync(request);
+    }
+
+    public Task<HttpResponseMessage> SendAsync(HttpMethod method, string url)
+    {
+        return Client.SendAsync(new HttpRequestMessage(method, url));
+    }
+
+    public static async Task<T> ReadAsync<T>(HttpResponseMessage response)
+        where T : class
+    {
+        T? value = await response.Content.ReadFromJsonAsync<T>(JsonOptions);
+        value.ShouldNotBeNull();
+        return value;
+    }
+
+    private async Task<T> SendAndReadAsync<T>(
+        HttpMethod method,
+        string url,
+        object? body,
+        HttpStatusCode expectedStatusCode)
+        where T : class
+    {
+        using HttpResponseMessage response = body is null
+            ? await SendAsync(method, url)
+            : await SendAsJsonAsync(method, url, body);
+
+        await response.StatusCode.ShouldBeWithBodyAsync(expectedStatusCode, response);
+        return await ReadAsync<T>(response);
     }
 
     private static bool IsDockerAvailable()
     {
         try
         {
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = "docker",
                 Arguments = "info",
@@ -54,13 +124,13 @@ public class IntegrationTestFixture : IAsyncInitializer, IAsyncDisposable
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(startInfo);
+            using Process? process = Process.Start(startInfo);
             if (process is null)
             {
                 return false;
             }
 
-            return process.WaitForExit(5000) && process.ExitCode == 0;
+            return process.WaitForExit(DockerProbeTimeout) && process.ExitCode == 0;
         }
         catch
         {
@@ -68,35 +138,40 @@ public class IntegrationTestFixture : IAsyncInitializer, IAsyncDisposable
         }
     }
 
+    private static bool IsContinuousIntegration =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CI"));
+
     private async Task EnsureDatabaseReadyAsync()
     {
-        postgresConnectionString = await app!.GetConnectionStringAsync(PostgresDbName);
+        string? postgresConnectionString = await app!.GetConnectionStringAsync(PostgresDbName);
         if (string.IsNullOrWhiteSpace(postgresConnectionString))
         {
             throw new InvalidOperationException("Postgres connection string not available.");
         }
 
-        await WaitForDatabaseTablesAsync(postgresConnectionString, TimeSpan.FromMinutes(1));
+        await WaitForDatabaseTablesAsync(postgresConnectionString, DatabaseReadyTimeout);
     }
 
     private static async Task WaitForDatabaseTablesAsync(string connectionString, TimeSpan timeout)
     {
-        var start = DateTime.UtcNow;
-        while (DateTime.UtcNow - start < timeout)
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < timeout)
         {
             try
             {
-                await using var connection = new NpgsqlConnection(connectionString);
+                await using NpgsqlConnection connection = new(connectionString);
                 await connection.OpenAsync();
-                await using var command = connection.CreateCommand();
+                await using NpgsqlCommand command = connection.CreateCommand();
                 command.CommandText = """
-                    SELECT COUNT(*)
-                    FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                      AND table_type = 'BASE TABLE'
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                          AND table_type = 'BASE TABLE'
+                    )
                     """;
-                var result = await command.ExecuteScalarAsync();
-                if (result is long count && count > 0)
+                object? result = await command.ExecuteScalarAsync();
+                if (result is true)
                 {
                     return;
                 }
@@ -106,7 +181,7 @@ public class IntegrationTestFixture : IAsyncInitializer, IAsyncDisposable
                 // Ignore transient startup failures while database is initializing.
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            await Task.Delay(DatabasePollInterval);
         }
 
         throw new TimeoutException("Timed out waiting for database tables to be created.");
