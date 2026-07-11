@@ -1,167 +1,67 @@
 # Modern Microservice Template
 
-A minimal .NET 10 template for creating Aspire-backed microservices with a feature-sliced Minimal API structure.
+A focused .NET 10 template for producing consistent, cloud-ready microservices with little ceremony. It favors feature colocation and built-in .NET capabilities over framework layers and preselected infrastructure.
 
-It generates a small, production-aware service that is still easy to understand in one sitting:
+## What it generates
 
-- one API project
-- one Aspire AppHost project
-- PostgreSQL and Redis resources
-- EF Core with migrations
-- OpenTelemetry, health and liveness endpoints, and resilient HTTP defaults
-- Scalar/OpenAPI in development
-- TUnit integration tests using Aspire testing
-- central package management, analyzers, `.editorconfig`, and Microsoft Testing Platform
+- Minimal API service and Aspire AppHost
+- PostgreSQL with EF Core migrations
+- operation-colocated vertical slices
+- Problem Details, validation, health checks, structured logging, and OpenTelemetry
+- safe HTTP resilience defaults and service discovery
+- unit and Aspire-hosted integration tests
+- local EF tooling, migration drift checks, publish validation, generated CI, and agent guidance
 
-## Prerequisites
+The reference Tasks feature covers CRUD, completion transitions, bounded pagination, UUID v7 IDs, injected time, optimistic concurrency, telemetry, and API tests. Redis, messaging, authentication, authorization, and vendor-specific deployment libraries stay out until a service has a concrete need.
 
-- .NET 10 SDK
-- Docker, for Aspire resources and integration tests
-- Git, if you want to clone and customize the template
+## Use the template
 
-## Quick Start
-
-Pack and install the template locally:
+Prerequisites: .NET 10 SDK, Aspire CLI, and Docker.
 
 ```bash
 dotnet pack -c Release template/microservice-template.Template.csproj
-
 dotnet new install ./template/bin/Release/ModernMicroservice.Template.*.nupkg
-
 dotnet new modern-microservice -n MyService
-
 cd MyService
-
-dotnet run --project src/MyService.AppHost/MyService.AppHost.csproj
+dotnet tool restore
+aspire start --non-interactive
 ```
 
-The AppHost starts the API plus PostgreSQL and Redis. In development, OpenAPI is exposed through Scalar.
+The dashboard exposes the API, PostgreSQL, telemetry, health, and a `seed-tasks` command. Scalar/OpenAPI and automatic migration application are Development-only.
 
-Uninstall the local template when you are done testing it:
+## Generated design
+
+```text
+src/<ServiceName>/Features/Tasks/
+  Create/ Get/ List/ Update/ Complete/ Delete/
+  Internal/
+  TaskItem.cs
+  TaskRepresentation.cs
+  TasksFeature.cs
+```
+
+Each operation file owns its route mapping, contract, response shape, and behavior. The domain type owns transitions and invariants. Cross-cutting composition remains in `Common`, `Configurations`, and `Infrastructure`; `Program.cs` stays small.
+
+The generated project includes `docs/architecture.md`, `docs/operations.md`, and `AGENTS.md` so future agents have the same boundaries and verification contract.
+
+## Verify this repository
 
 ```bash
-dotnet new uninstall ModernMicroservice.Template
+dotnet tool restore
+dotnet build MicroserviceTemplate.slnx -c Release
+dotnet test --solution MicroserviceTemplate.slnx -c Release --no-build
+dotnet test --project tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj -c Release
 ```
 
-## Generated Structure
+Integration and template-validation tests require Docker. Template validation packs and installs the template, generates a renamed service, checks its structure and substitutions, restores its tools, verifies migration/model parity, builds and publishes it, and runs its tests.
 
-A generated service uses `<ServiceName>` as the root namespace and project name.
+## Package publishing
 
-```text
-src/
-  <ServiceName>/
-  <ServiceName>.AppHost/
-tests/
-  <ServiceName>.IntegrationTests/
-```
-
-Application behavior lives in feature folders under `Features/`. Cross-cutting service defaults live in `Common/`, `Configurations/`, `Infrastructure/Data/`, and `Program.cs`.
-
-The starter task feature uses this shape:
-
-```text
-Features/
-  Tasks/
-    Models/
-    Operations/
-      Create/
-      Read/
-      List/
-      Update/
-      Delete/
-    Services/
-    TaskEndpoints.cs
-    TaskFeature.cs
-    TaskObservability.cs
-```
-
-Each operation keeps its handler, request, and response types together. `TaskFeature.cs` registers feature services, while `TaskEndpoints.cs` maps `/api/tasks` routes and applies the shared `api` rate-limit policy.
-
-Reusable startup and cross-cutting code uses this shape:
-
-```text
-Common/
-  MicroserviceTelemetry.cs
-  Http/
-    ApplicationProblemException.cs
-    EndpointMetadataExtensions.cs
-    GlobalExceptionHandler.cs
-    GlobalExceptionHandlerObservability.cs
-    PagedResult.cs
-Configurations/
-  Options/
-  Setup/
-    DevelopmentSetup.cs
-    MicroserviceSetup.cs
-    RateLimitingSetup.cs
-Infrastructure/
-  Data/
-```
-
-`Program.cs` stays small by composing setup extensions. Development-only OpenAPI, Scalar, root redirect, and database migration setup live in `Configurations/Setup/DevelopmentSetup.cs`.
-
-## Included Defaults
-
-- Minimal API endpoint groups
-- Request validation with `Microsoft.Extensions.Validation`
-- Problem Details and a small global exception handler
-- reusable application ProblemDetails exceptions for expected failures
-- OpenAPI response metadata helpers for common problem responses
-- bounded `PagedResult<T>` list responses
-- Basic fixed-window rate limiting
-- `/alive` and `/health` checks
-- Scalar/OpenAPI in development
-- EF Core with PostgreSQL
-- Redis distributed cache
-- OpenTelemetry logs, traces, and metrics with service resource attributes, OTLP exporter support, configurable trace sampling, and reusable feature telemetry helpers
-- HTTP client service discovery and standard resilience handlers
-- TUnit, Microsoft Testing Platform, Shouldly, and Aspire integration testing
-
-## Template Package
-
-```text
-template/microservice-template.Template.csproj
-template/.template.config/template.json
-template/README.template.md
-```
-
-The root `README.md` is used as the NuGet package README. The generated project's README is sourced from `template/README.template.md`.
-
-## Testing
-
-```bash
-dotnet build MicroserviceTemplate.slnx
-
-dotnet test --solution MicroserviceTemplate.slnx
-
-dotnet test --project tests/MicroserviceTemplate.IntegrationTests/MicroserviceTemplate.IntegrationTests.csproj
-
-dotnet test --project tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj
-```
-
-The integration tests require Docker because they start the Aspire AppHost with PostgreSQL and Redis.
-
-The template validation test packs the template, installs it locally, generates a new service, verifies token replacement, builds that generated service, and runs its generated integration tests.
-
-## Publishing
-
-This repository includes CI for build, service tests, and template generation tests.
-
-Package publishing is intentionally manual. To publish to GitHub Packages, run the `Release package` workflow from the GitHub Actions tab and provide the package version, for example `1.0.0`.
-
-The workflow will build, test, pack, and push:
-
-```text
-ModernMicroservice.Template.<version>.nupkg
-```
-
-You can also pack locally:
+The `Release package` workflow validates and publishes a selected version to GitHub Packages. For a local package:
 
 ```bash
 dotnet pack -c Release template/microservice-template.Template.csproj
 ```
-
-GitHub Packages may require NuGet authentication when installing packages, even for public repositories. NuGet.org is usually smoother if you want the template to be easy for anyone to install.
 
 ## License
 

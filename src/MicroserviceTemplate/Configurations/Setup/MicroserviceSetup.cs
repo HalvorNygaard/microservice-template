@@ -1,9 +1,8 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Http.Resilience;
 using MicroserviceTemplate.Common;
-using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -56,9 +55,15 @@ public static class MicroserviceSetup
                 options.TimestampFormat = "HH:mm:ss ";
             });
         }
-
-        builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
-        builder.Logging.AddFilter("System", LogLevel.Warning);
+        else
+        {
+            builder.Logging.AddJsonConsole(options =>
+            {
+                options.IncludeScopes = true;
+                options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
+                options.UseUtcTimestamp = true;
+            });
+        }
     }
 
     private static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
@@ -87,8 +92,7 @@ public static class MicroserviceSetup
                             !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.Ordinal)
                             && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath, StringComparison.Ordinal)
                     )
-                    .AddHttpClientInstrumentation()
-                    .AddNpgsql();
+                    .AddHttpClientInstrumentation();
 
                 ConfigureSampling(tracing, builder);
 
@@ -136,21 +140,8 @@ public static class MicroserviceSetup
 
     private static void AddDefaultHealthChecks(WebApplicationBuilder builder)
     {
-        var connectionString = builder.Configuration.GetConnectionString("postgresdb");
-        var redisConnectionString = builder.Configuration.GetConnectionString("cache");
-
-        var healthChecks = builder.Services.AddHealthChecks()
+        builder.Services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
-
-        if (!string.IsNullOrEmpty(connectionString))
-        {
-            healthChecks.AddNpgSql(connectionString, name: "postgresql", tags: ["ready"]);
-        }
-
-        if (!string.IsNullOrEmpty(redisConnectionString))
-        {
-            healthChecks.AddRedis(redisConnectionString, name: "redis", tags: ["ready"]);
-        }
     }
 
     private static void ConfigureHttpClientDefaults(WebApplicationBuilder builder)
@@ -158,7 +149,10 @@ public static class MicroserviceSetup
         builder.Services.AddServiceDiscovery();
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            http.AddStandardResilienceHandler();
+            http.AddStandardResilienceHandler(options =>
+            {
+                options.Retry.DisableForUnsafeHttpMethods();
+            });
             http.AddServiceDiscovery();
         });
     }
@@ -166,6 +160,7 @@ public static class MicroserviceSetup
     public static WebApplication UseMicroserviceDefaults(this WebApplication app)
     {
         app.UseExceptionHandler();
+        app.UseStatusCodePages();
         app.MapHealthChecks(HealthEndpointPath);
         app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
         {

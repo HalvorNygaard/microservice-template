@@ -22,8 +22,6 @@ public static class DataExtensions
             });
         });
 
-        builder.AddRedisDistributedCache("cache");
-
         return builder;
     }
 

@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "src/MicroserviceTemplate.AppHost/MicroserviceTemplate.AppHost.csproj"
+  }
+}

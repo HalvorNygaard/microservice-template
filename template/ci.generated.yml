@@ -20,8 +20,7 @@ jobs:
           dotnet-version: 10.0.x
       - run: dotnet tool restore
       - run: dotnet restore
-      - run: dotnet build MicroserviceTemplate.slnx -c Release --no-restore
+      - run: dotnet build -c Release --no-restore
       - run: dotnet test --solution MicroserviceTemplate.slnx -c Release --no-build
       - run: dotnet ef migrations has-pending-model-changes --project src/MicroserviceTemplate/MicroserviceTemplate.csproj --startup-project src/MicroserviceTemplate/MicroserviceTemplate.csproj --no-build --configuration Release
       - run: dotnet publish src/MicroserviceTemplate/MicroserviceTemplate.csproj -c Release --no-build
-      - run: dotnet test --project tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj -c Release

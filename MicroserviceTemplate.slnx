@@ -11,6 +11,7 @@
 
     <Folder Name="/Testing/">
         <Project Path="tests/MicroserviceTemplate.IntegrationTests/MicroserviceTemplate.IntegrationTests.csproj" />
+        <Project Path="tests/MicroserviceTemplate.UnitTests/MicroserviceTemplate.UnitTests.csproj" />
     </Folder>
     <Project Path="src/MicroserviceTemplate/MicroserviceTemplate.csproj" />
     <Project Path="src/MicroserviceTemplate.AppHost/MicroserviceTemplate.AppHost.csproj" />

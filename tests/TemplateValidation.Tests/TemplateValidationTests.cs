@@ -26,28 +26,30 @@ public class TemplateValidationTests
     private static readonly TimeSpan GeneratedTestTimeout = TimeSpan.FromMinutes(10);
     private static readonly string[] ExpectedTopLevelEntries =
     [
+        ".config",
         ".editorconfig",
         ".gitattributes",
+        ".github",
         ".gitignore",
+        "AGENTS.md",
         "Directory.Build.props",
         "Directory.Packages.props",
         "LICENSE",
         $"{TestServiceName}.slnx",
         "NuGet.Config",
         "README.md",
+        "aspire.config.json",
+        "docs",
         "global.json",
         "src",
         "tests"
     ];
     private static readonly string[] ForbiddenGeneratedPaths =
     [
-        ".github",
         ".aspire",
-        "aspire.config.json",
         "dist",
         "template",
-        "tests/TemplateValidation.Tests",
-        ".aspire"
+        "tests/TemplateValidation.Tests"
     ];
     private static readonly string[] ForbiddenGeneratedFragments =
     [
@@ -94,7 +96,10 @@ public class TemplateValidationTests
             await AssertGeneratedTextDoesNotContainForbiddenFragments(outputPath);
             AssertGeneratedReadme(outputPath);
 
+            await AssertGeneratedToolsRestoreAsync(outputPath);
             await AssertGeneratedProjectBuildsAsync(outputPath);
+            await AssertGeneratedMigrationsMatchModelAsync(outputPath);
+            await AssertGeneratedProjectPublishesAsync(outputPath);
             await AssertGeneratedIntegrationTestsPassAsync(outputPath);
         }
         finally
@@ -154,9 +159,9 @@ public class TemplateValidationTests
             .Select(Path.GetFileName)
             .ToArray();
 
-        migrationFiles.ShouldContain("20260119195356_Initial.cs");
-        migrationFiles.ShouldContain("20260119195356_Initial.Designer.cs");
         migrationFiles.ShouldContain("ApplicationDbContextModelSnapshot.cs");
+        migrationFiles.Count(static file => file is not null && file.EndsWith("_Initial.cs", StringComparison.Ordinal)).ShouldBe(1);
+        migrationFiles.Count(static file => file is not null && file.EndsWith("_Initial.Designer.cs", StringComparison.Ordinal)).ShouldBe(1);
     }
 
     private static void AssertGeneratedProjectFilesExist(string outputPath)
@@ -164,39 +169,43 @@ public class TemplateValidationTests
         var filesToCheck = new[]
         {
             Path.Combine(outputPath, TestServiceName + ".slnx"),
+            Path.Combine(outputPath, ".config", "dotnet-tools.json"),
+            Path.Combine(outputPath, ".github", "workflows", "ci.yml"),
+            Path.Combine(outputPath, "AGENTS.md"),
+            Path.Combine(outputPath, "aspire.config.json"),
+            Path.Combine(outputPath, "docs", "architecture.md"),
+            Path.Combine(outputPath, "docs", "operations.md"),
             Path.Combine(outputPath, "src", TestServiceName, $"{TestServiceName}.csproj"),
             Path.Combine(outputPath, "src", TestServiceName, "Program.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Configurations", "Options", "CacheOptions.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Configurations", "Options", "RateLimitingOptions.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Configurations", "Setup", "DevelopmentSetup.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Configurations", "Setup", "MicroserviceSetup.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Configurations", "Setup", "RateLimitingSetup.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Common", "Http", "ApplicationProblemException.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Common", "Http", "EndpointMetadataExtensions.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Common", "Http", "PagedResult.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Common", "MicroserviceTelemetry.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Common", "Http", "GlobalExceptionHandler.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Common", "Http", "GlobalExceptionHandlerObservability.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "TaskEndpoints.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "TaskFeature.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Common", "Http", "ProblemDetailsExtensions.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "TasksFeature.cs"),
             Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "TaskObservability.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Models", "TaskItem.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Models", "TaskItemConfiguration.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Operations", "Create", "CreateTaskHandler.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Operations", "Create", "CreateTaskRequest.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Operations", "Create", "CreateTaskResponse.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Operations", "Delete", "DeleteTaskHandler.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Operations", "Delete", "DeleteTaskRequest.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "TaskItem.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "TaskRepresentation.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Internal", "Persistence", "TaskItemConfiguration.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Create", "CreateTask.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Get", "GetTask.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "List", "ListTasks.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Update", "UpdateTask.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Complete", "CompleteTask.cs"),
+            Path.Combine(outputPath, "src", TestServiceName, "Features", "Tasks", "Delete", "DeleteTask.cs"),
             Path.Combine(outputPath, "src", $"{TestServiceName}.AppHost", $"{TestServiceName}.AppHost.csproj"),
             Path.Combine(outputPath, "src", $"{TestServiceName}.AppHost", "AppHost.cs"),
+            Path.Combine(outputPath, "src", $"{TestServiceName}.AppHost", "SeedTasksCommand.cs"),
             Path.Combine(outputPath, "src", $"{TestServiceName}.AppHost", "Properties", "launchSettings.json"),
+            Path.Combine(outputPath, "tests", $"{TestServiceName}.UnitTests", $"{TestServiceName}.UnitTests.csproj"),
+            Path.Combine(outputPath, "tests", $"{TestServiceName}.UnitTests", "Tasks", "TaskItemTests.cs"),
             Path.Combine(outputPath, "tests", $"{TestServiceName}.IntegrationTests", $"{TestServiceName}.IntegrationTests.csproj"),
             Path.Combine(outputPath, "tests", $"{TestServiceName}.IntegrationTests", "Common", "ApiAssertions.cs"),
             Path.Combine(outputPath, "tests", $"{TestServiceName}.IntegrationTests", "Common", "TestFixture.cs"),
-            Path.Combine(outputPath, "tests", $"{TestServiceName}.IntegrationTests", "Tests", "TasksCrudTests.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Infrastructure", "Data", "Migrations", "20260119195356_Initial.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Infrastructure", "Data", "Migrations", "20260119195356_Initial.Designer.cs"),
-            Path.Combine(outputPath, "src", TestServiceName, "Infrastructure", "Data", "Migrations", "ApplicationDbContextModelSnapshot.cs")
+            Path.Combine(outputPath, "tests", $"{TestServiceName}.IntegrationTests", "Tests", "TasksApiTests.cs")
         };
 
         foreach (var file in filesToCheck)
@@ -213,6 +222,7 @@ public class TemplateValidationTests
         slnContent.ShouldContain($"<Project Path=\"src/{TestServiceName}/{TestServiceName}.csproj\" />");
         slnContent.ShouldContain($"<Project Path=\"src/{TestServiceName}.AppHost/{TestServiceName}.AppHost.csproj\" />");
         slnContent.ShouldContain($"<Project Path=\"tests/{TestServiceName}.IntegrationTests/{TestServiceName}.IntegrationTests.csproj\" />");
+        slnContent.ShouldContain($"<Project Path=\"tests/{TestServiceName}.UnitTests/{TestServiceName}.UnitTests.csproj\" />");
         slnContent.ShouldNotContain("TemplateValidation.Tests");
         slnContent.ShouldNotContain("MicroserviceTemplate");
         slnContent.ShouldNotContain("microservice-template");
@@ -223,6 +233,7 @@ public class TemplateValidationTests
         var serviceProject = ReadTextFile(Path.Combine(outputPath, "src", TestServiceName, $"{TestServiceName}.csproj"));
         var appHostProject = ReadTextFile(Path.Combine(outputPath, "src", $"{TestServiceName}.AppHost", $"{TestServiceName}.AppHost.csproj"));
         var integrationProject = ReadTextFile(Path.Combine(outputPath, "tests", $"{TestServiceName}.IntegrationTests", $"{TestServiceName}.IntegrationTests.csproj"));
+        var unitProject = ReadTextFile(Path.Combine(outputPath, "tests", $"{TestServiceName}.UnitTests", $"{TestServiceName}.UnitTests.csproj"));
 
         serviceProject.ShouldContain("<RootNamespace>MyAwesomeService</RootNamespace>");
         serviceProject.ShouldContain("<TargetFramework>net10.0</TargetFramework>");
@@ -230,6 +241,7 @@ public class TemplateValidationTests
         appHostProject.ShouldContain($"<ProjectReference Include=\"..\\{TestServiceName}\\{TestServiceName}.csproj\" />");
         integrationProject.ShouldContain($"<ProjectReference Include=\"..\\..\\src\\{TestServiceName}\\{TestServiceName}.csproj\" />");
         integrationProject.ShouldContain($"<ProjectReference Include=\"..\\..\\src\\{TestServiceName}.AppHost\\{TestServiceName}.AppHost.csproj\" />");
+        unitProject.ShouldContain($"<ProjectReference Include=\"..\\..\\src\\{TestServiceName}\\{TestServiceName}.csproj\" />");
     }
 
     private static void AssertGeneratedAppHost(string outputPath)
@@ -237,9 +249,10 @@ public class TemplateValidationTests
         var appHost = ReadTextFile(Path.Combine(outputPath, "src", $"{TestServiceName}.AppHost", "AppHost.cs"));
 
         appHost.ShouldContain($"builder.AddProject<Projects.{TestServiceName}>(\"{TestServiceKebabName}\", launchProfileName: \"http\")");
-        appHost.ShouldContain(".WithReference(cache).WaitFor(cache)");
         appHost.ShouldContain(".WithReference(postgresdb).WaitFor(postgresdb)");
         appHost.ShouldContain(".WithHttpHealthCheck(\"/health\", endpointName: \"http\")");
+        appHost.ShouldContain(".WithSeedTasksCommand()");
+        appHost.ShouldNotContain("AddRedis");
     }
 
     private static void AssertGeneratedLaunchSettings(string outputPath)
@@ -256,9 +269,15 @@ public class TemplateValidationTests
         var readme = ReadTextFile(Path.Combine(outputPath, "README.md"));
 
         readme.ShouldContain($"# {TestServiceName}");
-        readme.ShouldContain($"src/{TestServiceName}/{TestServiceName}.csproj");
-        readme.ShouldContain($"src/{TestServiceName}.AppHost/{TestServiceName}.AppHost.csproj");
+        readme.ShouldContain("aspire start --non-interactive");
         readme.ShouldNotContain("<ServiceName>");
+
+        var aspireConfig = ReadTextFile(Path.Combine(outputPath, "aspire.config.json"));
+        aspireConfig.ShouldContain($"src/{TestServiceName}.AppHost/{TestServiceName}.AppHost.csproj");
+
+        var workflow = ReadTextFile(Path.Combine(outputPath, ".github", "workflows", "ci.yml"));
+        workflow.ShouldContain($"dotnet test --solution {TestServiceName}.slnx");
+        workflow.ShouldNotContain("MicroserviceTemplate");
     }
 
     private static async Task AssertGeneratedTextDoesNotContainForbiddenFragments(string outputPath)
@@ -291,9 +310,52 @@ public class TemplateValidationTests
             GeneratedTestTimeout,
             outputPath,
             "build",
-            slnFile);
+            slnFile,
+            "-c",
+            "Release");
 
         buildResult.ExitCode.ShouldBe(0, $"Build failed with output: {buildResult.Output}\nErrors: {buildResult.Error}");
+    }
+
+    private static async Task AssertGeneratedToolsRestoreAsync(string outputPath)
+    {
+        var result = await RunDotNetCommand(outputPath, "tool", "restore");
+        result.ExitCode.ShouldBe(0, $"Tool restore failed: {result.Output}\n{result.Error}");
+    }
+
+    private static async Task AssertGeneratedMigrationsMatchModelAsync(string outputPath)
+    {
+        var serviceProject = Path.Combine("src", TestServiceName, $"{TestServiceName}.csproj");
+        var result = await RunDotNetCommand(
+            GeneratedTestTimeout,
+            outputPath,
+            "ef",
+            "migrations",
+            "has-pending-model-changes",
+            "--project",
+            serviceProject,
+            "--startup-project",
+            serviceProject,
+            "--no-build",
+            "--configuration",
+            "Release");
+
+        result.ExitCode.ShouldBe(0, $"Migration drift detected: {result.Output}\n{result.Error}");
+    }
+
+    private static async Task AssertGeneratedProjectPublishesAsync(string outputPath)
+    {
+        var serviceProject = Path.Combine("src", TestServiceName, $"{TestServiceName}.csproj");
+        var result = await RunDotNetCommand(
+            GeneratedTestTimeout,
+            outputPath,
+            "publish",
+            serviceProject,
+            "-c",
+            "Release",
+            "--no-build");
+
+        result.ExitCode.ShouldBe(0, $"Publish failed: {result.Output}\n{result.Error}");
     }
 
     private static async Task AssertGeneratedIntegrationTestsPassAsync(string outputPath)
@@ -432,6 +494,8 @@ public class TemplateValidationTests
 
         psi.EnvironmentVariables["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         psi.EnvironmentVariables["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1";
+        psi.EnvironmentVariables["ConnectionStrings__postgresdb"] =
+            "Host=localhost;Port=5432;Database=template_validation;Username=postgres;Password=development-only";
 
         foreach (var argument in arguments)
         {

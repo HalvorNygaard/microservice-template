@@ -1,107 +1,64 @@
 # MicroserviceTemplate
 
-A minimal .NET 10 microservice generated from the Modern Microservice Template.
+A compact .NET 10 microservice with Aspire orchestration, PostgreSQL, vertical slices, and production-aware defaults.
 
-## Run
+## Start locally
 
-This project uses Aspire for local infrastructure. Start the AppHost:
-
-```bash
-dotnet run --project src/MicroserviceTemplate.AppHost/MicroserviceTemplate.AppHost.csproj
-```
-
-The API is exposed through the AppHost on localhost.
-
-Scalar/OpenAPI are enabled in Development.
-
-In Development, the app also applies EF Core migrations during startup. The development-only Scalar/OpenAPI and root redirect setup lives in `Configurations/Setup/DevelopmentSetup.cs`.
-
-## Development
-
-Restore and run:
+Prerequisites are the .NET 10 SDK, the Aspire CLI, and Docker.
 
 ```bash
-dotnet restore
-dotnet run --project src/MicroserviceTemplate/MicroserviceTemplate.csproj
+dotnet tool restore
+aspire start --non-interactive
 ```
 
-Run the tests:
+Use the Aspire dashboard to open the API and Scalar UI, inspect telemetry and health, or run the `seed-tasks` command. The API exposes readiness at `/health` and liveness at `/alive`.
 
-```bash
-dotnet test
-```
-
-Integration tests require Docker because the Aspire test host starts PostgreSQL and Redis.
-
-## Features
-
-Application features live under:
+## Structure
 
 ```text
-src/MicroserviceTemplate/Features/
+src/
+  MicroserviceTemplate/
+    Features/Tasks/
+      Create/ Get/ List/ Update/ Complete/ Delete/
+      Internal/
+      TaskItem.cs
+      TasksFeature.cs
+    Common/
+    Configurations/
+    Infrastructure/Data/
+  MicroserviceTemplate.AppHost/
+tests/
+  MicroserviceTemplate.UnitTests/
+  MicroserviceTemplate.IntegrationTests/
 ```
 
-Each feature owns its models, endpoints, operation request/response contracts, handlers, feature services, cache usage, and DI registration.
+An operation folder owns its route, request contract, result types, and behavior. Domain invariants stay with the feature's domain type. Shared folders are for cross-cutting behavior, not a default dumping ground.
 
-The starter Tasks sample separates feature registration from endpoint mapping:
+The Tasks sample demonstrates validation, bounded paging, UUID v7 identifiers, `TimeProvider`, state transitions, optimistic concurrency, EF projections, Problem Details, telemetry, and focused tests. Replace it with your first real feature while retaining the shape.
 
-```text
-src/MicroserviceTemplate/Features/Tasks/TaskFeature.cs
-src/MicroserviceTemplate/Features/Tasks/TaskEndpoints.cs
-src/MicroserviceTemplate/Features/Tasks/TaskObservability.cs
-```
+See [architecture](docs/architecture.md), [operations](docs/operations.md), and [agent guidance](AGENTS.md).
 
-`TaskFeature.cs` registers handlers and services. `TaskEndpoints.cs` maps `/api/tasks` and applies `RequireRateLimiting(RateLimitingSetup.ApiPolicyName)`. `TaskObservability.cs` contains structured `LoggerMessage` methods and task metrics.
+## Included defaults
 
-Request validation is registered by default. Put data annotation attributes directly on operation request records, such as `CreateTaskRequest` or `UpdateTaskRequest`.
+- Minimal APIs, built-in validation, OpenAPI, and Scalar in Development
+- EF Core and PostgreSQL through Aspire
+- RFC 9457 Problem Details with trace and request correlation
+- structured console logging and OpenTelemetry logs, metrics, and traces
+- service discovery and HTTP resilience without unsafe-method retries
+- unit tests plus Aspire-hosted integration tests
+- generated CI, central package management, analyzers, and local EF tooling
 
-List endpoints should be bounded. The starter task list returns `PagedResult<T>` and clamps `pageSize` to avoid unbounded reads.
+Redis, messaging, and cloud-provider SDKs are deliberately optional. Authentication and authorization are also not configured: select an identity provider, issuer, audience, and policy model for the real service before exposing protected behavior.
 
-Use `ApplicationProblemException` for reusable expected failures that should be converted to ProblemDetails by the global exception handler.
+Rate limiting is an explicit deployment decision. Prefer an ingress/API-gateway policy or add a distributed service policy; a process-local default becomes inconsistent as replicas scale.
 
-Strongly typed configuration options live under `Configurations/Options`, and app startup wiring lives under `Configurations/Setup`. Cache TTLs are configured from the `Cache` section in `appsettings.json`.
-
-Shared code lives under:
-
-```text
-src/MicroserviceTemplate/Common/
-src/MicroserviceTemplate/Configurations/
-src/MicroserviceTemplate/Infrastructure/Data/
-src/MicroserviceTemplate/Program.cs
-```
-
-`Common/MicroserviceTelemetry.cs` provides the service meter, activity source, common tags, and activity helpers. `Common/Http` contains global exception handling plus exception metrics and activity enrichment.
-
-## Infrastructure
-
-The AppHost configures:
-
-- PostgreSQL for EF Core
-- Redis for distributed caching
-- OpenTelemetry collection
-- Health and liveness checks
-
-The API project uses resilient HTTP defaults and service discovery when HTTP clients are created.
-
-Health endpoints are exposed at `/health` for readiness and `/alive` for liveness.
-
-OpenTelemetry logs, metrics, and traces include service resource attributes. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to enable OTLP export, and tune tracing with `OpenTelemetry:Tracing:SamplingRatio`.
-
-API routes use a starter rate-limit policy named `api`. Tune it from `RateLimiting:Api` in `appsettings.json`, or apply the policy to new route groups with `RequireRateLimiting(RateLimitingSetup.ApiPolicyName)`.
-
-## EF Core migrations
-
-Run these commands from the API project directory:
+## Verify
 
 ```bash
-dotnet ef migrations add AddFeatureName
-dotnet ef database update
+dotnet build -c Release
+dotnet test --solution MicroserviceTemplate.slnx -c Release --no-build
+dotnet ef migrations has-pending-model-changes --project src/MicroserviceTemplate/MicroserviceTemplate.csproj --startup-project src/MicroserviceTemplate/MicroserviceTemplate.csproj --no-build --configuration Release
+dotnet publish src/MicroserviceTemplate/MicroserviceTemplate.csproj -c Release --no-build
 ```
 
-## Tests
-
-```bash
-dotnet test --project tests/MicroserviceTemplate.IntegrationTests/MicroserviceTemplate.IntegrationTests.csproj
-```
-
-Integration tests use Aspire testing to start PostgreSQL, Redis, and the API. Template validation in the source repository also verifies generated projects build, replace template tokens, and run their generated integration tests.
+Integration tests require Docker. Database migrations run automatically only in Development; use a separate deployment step and privileged identity in production.
