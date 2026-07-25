@@ -1,10 +1,10 @@
-using MicroserviceTemplate.Common.Http;
-using MicroserviceTemplate.Infrastructure.Data;
+using ModernMicroservice.Common.Http;
+using ModernMicroservice.Infrastructure.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 
-namespace MicroserviceTemplate.Features.Tasks.Delete;
+namespace ModernMicroservice.Features.Tasks.Delete;
 
-public sealed class DeleteTask
+internal sealed class DeleteTask
 {
     private DeleteTask() { }
 
@@ -13,12 +13,11 @@ public sealed class DeleteTask
             .WithName("DeleteTask")
             .WithSummary("Delete a task")
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesCommonProblems();
+            .ProducesCommonProblems()
+            .WithRequestTimeout(ApplicationRequestTimeouts.ApiPolicy);
 
     internal static async Task<Results<NoContent, ProblemHttpResult>> Handle(
         Guid id,
-        Guid version,
         ApplicationDbContext dbContext,
         ILogger<DeleteTask> logger,
         CancellationToken cancellationToken)
@@ -29,26 +28,8 @@ public sealed class DeleteTask
             return ApiProblems.NotFound($"Task {id} was not found.", "Task.NotFound");
         }
 
-        if (task.Version != version)
-        {
-            return ApiProblems.Conflict(
-                "Task version conflict",
-                $"Task {id} changed after it was read. Reload it before deleting.",
-                "Task.VersionConflict");
-        }
-
         dbContext.Tasks.Remove(task);
-        try
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        {
-            return ApiProblems.Conflict(
-                "Task version conflict",
-                $"Task {id} changed after it was read. Reload it before deleting.",
-                "Task.VersionConflict");
-        }
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         TaskObservability.RecordChange("delete", task.Status);
         logger.TaskDeleted(task.Id);

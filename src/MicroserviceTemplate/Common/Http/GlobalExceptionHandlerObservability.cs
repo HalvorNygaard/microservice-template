@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using MicroserviceTemplate.Common;
+using ModernMicroservice.Common;
 
-namespace MicroserviceTemplate.Common.Http;
+namespace ModernMicroservice.Common.Http;
 
 internal static partial class GlobalExceptionHandlerObservability
 {
@@ -20,23 +20,23 @@ internal static partial class GlobalExceptionHandlerObservability
 
     private static readonly Counter<long> ExceptionsHandled = MicroserviceTelemetry.Meter.CreateCounter<long>(
         MicroserviceTelemetry.Name("exceptions.handled"),
-        description: "Number of exceptions handled by status code and error type.");
+        description: "Number of exceptions handled by status code and error category.");
 
-    internal static void RecordExceptionHandled(int statusCode, string errorType) =>
+    internal static void RecordExceptionHandled(int statusCode, string errorCategory) =>
         ExceptionsHandled.Add(
             1,
             MicroserviceTelemetry.StatusCodeTag(statusCode),
-            MicroserviceTelemetry.ErrorTypeTag(errorType));
+            MicroserviceTelemetry.ErrorCategoryTag(errorCategory));
 
-    internal static void EnrichCurrentActivity(int statusCode, string errorType)
+    internal static void EnrichCurrentActivity(int statusCode, string errorCategory)
     {
         Activity? activity = Activity.Current;
-        activity?.SetTag(MicroserviceTelemetry.ErrorTypeAttributeName, errorType);
+        activity?.SetTag(MicroserviceTelemetry.ErrorCategoryAttributeName, errorCategory);
         activity?.SetTag(MicroserviceTelemetry.StatusCodeAttributeName, statusCode);
 
         if (statusCode >= StatusCodes.Status500InternalServerError)
         {
-            activity?.SetStatus(ActivityStatusCode.Error, errorType);
+            activity?.SetStatus(ActivityStatusCode.Error, errorCategory);
         }
     }
 }

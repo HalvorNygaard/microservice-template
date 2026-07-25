@@ -1,31 +1,28 @@
-using System.Reflection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Http.Resilience;
-using MicroserviceTemplate.Common;
+using ModernMicroservice.Common;
+using ModernMicroservice.Common.Http;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace MicroserviceTemplate.Configurations.Setup;
+namespace ModernMicroservice.Configurations.Setup;
 
-public static class MicroserviceSetup
+internal static class MicroserviceSetup
 {
     private const string OtlpEndpointConfigurationKey = "OTEL_EXPORTER_OTLP_ENDPOINT";
-    private const string TraceSamplingRatioConfigurationKey = "OpenTelemetry:Tracing:SamplingRatio";
     private const string HealthEndpointPath = "/health";
     private const string AlivenessEndpointPath = "/alive";
 
-    public static WebApplicationBuilder AddMicroserviceDefaults(this WebApplicationBuilder builder)
+    internal static WebApplicationBuilder AddMicroserviceDefaults(this WebApplicationBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         ConfigureLogging(builder);
         ConfigureOpenTelemetry(builder);
-        AddDefaultHealthChecks(builder);
-        ConfigureHttpClientDefaults(builder);
+        builder.Services.AddHealthChecks()
+            .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
 
         return builder;
     }
@@ -33,19 +30,6 @@ public static class MicroserviceSetup
     private static void ConfigureLogging(WebApplicationBuilder builder)
     {
         builder.Logging.ClearProviders();
-        builder.Logging.AddOpenTelemetry(logging =>
-        {
-            logging.SetResourceBuilder(CreateResourceBuilder(builder));
-            logging.IncludeFormattedMessage = true;
-            logging.IncludeScopes = true;
-            logging.ParseStateValues = true;
-
-            if (UseOtlpExporter(builder))
-            {
-                logging.AddOtlpExporter();
-            }
-        });
-
         if (builder.Environment.IsDevelopment())
         {
             builder.Logging.AddSimpleConsole(options =>
@@ -64,108 +48,46 @@ public static class MicroserviceSetup
                 options.UseUtcTimestamp = true;
             });
         }
+
+        builder.Logging.AddOpenTelemetry(logging =>
+        {
+            logging.IncludeFormattedMessage = true;
+            logging.IncludeScopes = true;
+        });
     }
 
     private static void ConfigureOpenTelemetry(WebApplicationBuilder builder)
     {
-        var useOtlpExporter = UseOtlpExporter(builder);
+        OpenTelemetryBuilder openTelemetry = builder.Services.AddOpenTelemetry()
+            .WithMetrics(metrics => metrics
+                .AddMeter(MicroserviceTelemetry.MeterName)
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation())
+            .WithTracing(tracing => tracing
+                .AddAspNetCoreInstrumentation(options =>
+                    options.Filter = context =>
+                        !context.Request.Path.StartsWithSegments(HealthEndpointPath)
+                        && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath))
+                .AddHttpClientInstrumentation());
 
-        builder.Services.AddOpenTelemetry()
-            .ConfigureResource(resource => ConfigureResource(resource, builder))
-            .WithMetrics(metrics =>
-            {
-                metrics.AddMeter(MicroserviceTelemetry.MeterName)
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
-
-                if (useOtlpExporter)
-                {
-                    metrics.AddOtlpExporter();
-                }
-            })
-            .WithTracing(tracing =>
-            {
-                tracing.AddSource(MicroserviceTelemetry.ActivitySourceName, builder.Environment.ApplicationName)
-                    .AddAspNetCoreInstrumentation(options =>
-                        options.Filter = context =>
-                            !context.Request.Path.StartsWithSegments(HealthEndpointPath, StringComparison.Ordinal)
-                            && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath, StringComparison.Ordinal)
-                    )
-                    .AddHttpClientInstrumentation();
-
-                ConfigureSampling(tracing, builder);
-
-                if (useOtlpExporter)
-                {
-                    tracing.AddOtlpExporter();
-                }
-            });
-    }
-
-    private static ResourceBuilder CreateResourceBuilder(WebApplicationBuilder builder)
-    {
-        return ConfigureResource(ResourceBuilder.CreateDefault(), builder);
-    }
-
-    private static ResourceBuilder ConfigureResource(ResourceBuilder resourceBuilder, WebApplicationBuilder builder)
-    {
-        AssemblyName assemblyName = typeof(MicroserviceSetup).Assembly.GetName();
-        return resourceBuilder
-            .AddService(
-                serviceName: builder.Environment.ApplicationName,
-                serviceVersion: assemblyName.Version?.ToString(),
-                serviceInstanceId: Environment.MachineName)
-            .AddAttributes([
-                new KeyValuePair<string, object>("deployment.environment.name", builder.Environment.EnvironmentName)
-            ]);
-    }
-
-    private static void ConfigureSampling(TracerProviderBuilder tracing, WebApplicationBuilder builder)
-    {
-        double? samplingRatio = builder.Configuration.GetValue<double?>(TraceSamplingRatioConfigurationKey);
-        if (samplingRatio is null)
+        if (!string.IsNullOrWhiteSpace(builder.Configuration[OtlpEndpointConfigurationKey]))
         {
-            return;
+            openTelemetry.UseOtlpExporter();
         }
-
-        tracing.SetSampler(new ParentBasedSampler(
-            new TraceIdRatioBasedSampler(Math.Clamp(samplingRatio.Value, 0, 1))));
     }
 
-    private static bool UseOtlpExporter(WebApplicationBuilder builder)
-    {
-        return !string.IsNullOrWhiteSpace(builder.Configuration[OtlpEndpointConfigurationKey]);
-    }
-
-    private static void AddDefaultHealthChecks(WebApplicationBuilder builder)
-    {
-        builder.Services.AddHealthChecks()
-            .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
-    }
-
-    private static void ConfigureHttpClientDefaults(WebApplicationBuilder builder)
-    {
-        builder.Services.AddServiceDiscovery();
-        builder.Services.ConfigureHttpClientDefaults(http =>
-        {
-            http.AddStandardResilienceHandler(options =>
-            {
-                options.Retry.DisableForUnsafeHttpMethods();
-            });
-            http.AddServiceDiscovery();
-        });
-    }
-
-    public static WebApplication UseMicroserviceDefaults(this WebApplication app)
+    internal static WebApplication UseMicroserviceDefaults(this WebApplication app)
     {
         app.UseExceptionHandler();
         app.UseStatusCodePages();
-        app.MapHealthChecks(HealthEndpointPath);
+        app.UseRequestTimeouts();
+        app.MapHealthChecks(HealthEndpointPath)
+            .WithRequestTimeout(ApplicationRequestTimeouts.HealthCheckPolicy);
         app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
         {
-            Predicate = r => r.Tags.Contains("live")
-        });
+            Predicate = registration => registration.Tags.Contains("live")
+        }).WithRequestTimeout(ApplicationRequestTimeouts.HealthCheckPolicy);
 
         return app;
     }

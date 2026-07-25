@@ -1,4 +1,6 @@
-namespace MicroserviceTemplate.Features.Tasks;
+using System.Text.Json.Serialization;
+
+namespace ModernMicroservice.Features.Tasks;
 
 internal sealed class TaskItem
 {
@@ -6,88 +8,40 @@ internal sealed class TaskItem
     {
     }
 
-    private TaskItem(Guid id, string title, string description, DateTimeOffset? dueDate, DateTimeOffset now)
+    private TaskItem(Guid id, string title, string description, DateTimeOffset now)
     {
         Id = id;
         Title = title;
         Description = description;
-        DueDate = dueDate;
         Status = TaskItemStatus.Todo;
         CreatedAt = now;
         UpdatedAt = now;
-        Version = Guid.CreateVersion7(now);
     }
 
     public Guid Id { get; private set; }
     public string Title { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public TaskItemStatus Status { get; private set; }
-    public DateTimeOffset? DueDate { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
-    public Guid Version { get; private set; }
 
-    public static TaskItem Create(string title, string description, DateTimeOffset? dueDate, TimeProvider timeProvider)
+    public static TaskItem Create(string title, string description, TimeProvider timeProvider)
     {
         (title, description) = NormalizeAndValidate(title, description);
         DateTimeOffset now = timeProvider.GetUtcNow();
-        return new TaskItem(
-            Guid.CreateVersion7(now),
-            title,
-            description,
-            dueDate?.ToUniversalTime(),
-            now);
+        return new TaskItem(Guid.CreateVersion7(now), title, description, now);
     }
 
-    public string? Update(
-        string title,
-        string description,
-        TaskItemStatus status,
-        DateTimeOffset? dueDate,
-        TimeProvider timeProvider)
+    public bool Complete(TimeProvider timeProvider)
     {
-        (title, description) = NormalizeAndValidate(title, description);
-        if (!CanTransition(Status, status))
+        if (Status == TaskItemStatus.Done)
         {
-            return $"A task cannot transition from {Status} to {status}.";
+            return false;
         }
 
-        Title = title;
-        Description = description;
-        Status = status;
-        DueDate = dueDate?.ToUniversalTime();
-        Touch(timeProvider.GetUtcNow());
-        return null;
-    }
-
-    public string? Complete(TimeProvider timeProvider)
-    {
-        if (Status == TaskItemStatus.Cancelled)
-        {
-            return "A cancelled task cannot be completed.";
-        }
-
-        if (Status != TaskItemStatus.Done)
-        {
-            Status = TaskItemStatus.Done;
-            Touch(timeProvider.GetUtcNow());
-        }
-
-        return null;
-    }
-
-    private static bool CanTransition(TaskItemStatus current, TaskItemStatus next) =>
-        current == next || current switch
-        {
-            TaskItemStatus.Todo => next is TaskItemStatus.InProgress or TaskItemStatus.Done or TaskItemStatus.Cancelled,
-            TaskItemStatus.InProgress => next is TaskItemStatus.Done or TaskItemStatus.Cancelled,
-            _ => false
-        };
-
-    private void Touch(DateTimeOffset now)
-    {
-        UpdatedAt = now;
-        Version = Guid.CreateVersion7(now);
+        Status = TaskItemStatus.Done;
+        UpdatedAt = timeProvider.GetUtcNow();
+        return true;
     }
 
     private static (string Title, string Description) NormalizeAndValidate(string title, string description)
@@ -111,10 +65,9 @@ internal sealed class TaskItem
     }
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<TaskItemStatus>))]
 public enum TaskItemStatus
 {
     Todo = 0,
-    InProgress = 1,
-    Done = 2,
-    Cancelled = 3
+    Done = 1
 }

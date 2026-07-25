@@ -1,7 +1,7 @@
 using System.Diagnostics.Metrics;
-using MicroserviceTemplate.Common;
+using ModernMicroservice.Common;
 
-namespace MicroserviceTemplate.Features.Tasks;
+namespace ModernMicroservice.Features.Tasks;
 
 internal static partial class TaskObservability
 {
@@ -16,14 +16,11 @@ internal static partial class TaskObservability
             new KeyValuePair<string, object?>(MicroserviceTelemetry.Name("status"), status.ToString()));
 
     [LoggerMessage(EventId = 2001, Level = LogLevel.Information, Message = "Created task {TaskId} with status {Status}")]
-    internal static partial void TaskCreated(this ILogger logger, Guid taskId, string status);
+    internal static partial void TaskCreated(this ILogger logger, Guid taskId, TaskItemStatus status);
 
-    [LoggerMessage(EventId = 2002, Level = LogLevel.Information, Message = "Updated task {TaskId} with status {Status}")]
-    internal static partial void TaskUpdated(this ILogger logger, Guid taskId, string status);
-
-    [LoggerMessage(EventId = 2003, Level = LogLevel.Information, Message = "Completed task {TaskId}")]
+    [LoggerMessage(EventId = 2002, Level = LogLevel.Information, Message = "Completed task {TaskId}")]
     internal static partial void TaskCompleted(this ILogger logger, Guid taskId);
 
-    [LoggerMessage(EventId = 2004, Level = LogLevel.Information, Message = "Deleted task {TaskId}")]
+    [LoggerMessage(EventId = 2003, Level = LogLevel.Information, Message = "Deleted task {TaskId}")]
     internal static partial void TaskDeleted(this ILogger logger, Guid taskId);
 }

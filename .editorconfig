@@ -42,10 +42,8 @@ csharp_prefer_braces = true:suggestion
 csharp_prefer_simple_using_statement = true:suggestion
 csharp_style_operator_placement_when_wrapping = beginning_of_line
 
-[*.cs]
-dotnet_diagnostic.MA0004.severity = none
-dotnet_diagnostic.MA0048.severity = none
-dotnet_diagnostic.MA0051.severity = none
+[*.{csproj,props,targets,slnx,json,yml,yaml}]
+indent_size = 2
 
 [**/Migrations/*.cs]
 generated_code = true

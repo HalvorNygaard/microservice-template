@@ -9,49 +9,83 @@
     "language": "C#",
     "type": "project"
   },
-  "sourceName": "MicroserviceTemplate",
   "preferNameDirectory": true,
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "include": [
+        "**/*"
+      ],
+      "exclude": [
+        ".template.config/**/*"
+      ]
+    }
+  ],
   "symbols": {
-    "ServiceName": {
+    "ServiceNameInPaths": {
       "type": "derived",
       "valueSource": "name",
-      "valueTransform": "KeepAsIs",
+      "valueTransform": "RawName",
       "replaces": "MicroserviceTemplate",
       "fileRename": "MicroserviceTemplate"
     },
-    "ServiceName_Underscore": {
-      "type": "derived",
-      "valueSource": "ServiceName",
-      "valueTransform": "ServiceNameToUnderscore",
-      "replaces": "MicroserviceTemplate_AppHost"
-    },
     "ServiceNameKebab": {
       "type": "derived",
-      "valueSource": "ServiceName",
+      "valueSource": "name",
       "valueTransform": "ServiceNameToKebab",
       "replaces": "apiservice"
     },
-    "ServiceHost": {
+    "ServiceNamespace": {
       "type": "derived",
-      "valueSource": "ServiceNameKebab",
-      "valueTransform": "AppendDevLocalhost",
-      "replaces": "template.dev.localhost"
+      "valueSource": "name",
+      "valueTransform": "ServiceNameToNamespace",
+      "replaces": "ModernMicroservice"
+    },
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "description": "If specified, skips the automatic restore of the project on create.",
+      "defaultValue": "false"
+    },
+    "ApiHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": {
+        "fallback": "5471"
+      },
+      "replaces": "5471"
+    },
+    "AppHostHttpPort": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": {
+        "fallback": "15183"
+      },
+      "replaces": "15183"
+    },
+    "DashboardOtlpPort": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": {
+        "fallback": "19100"
+      },
+      "replaces": "19100"
+    },
+    "ResourceServicePort": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": {
+        "fallback": "20100"
+      },
+      "replaces": "20100"
     }
   },
   "forms": {
-    "KeepAsIs": {
-      "identifier": "identity"
-    },
-    "ServiceNameToUnderscore": {
-      "identifier": "chain",
-      "steps": [
-        "AppendAppHostSuffixUnderscore"
-      ]
-    },
-    "AppendAppHostSuffixUnderscore": {
+    "RawName": {
       "identifier": "replace",
-      "pattern": "^(.+)$",
-      "replacement": "$1_AppHost"
+      "pattern": "$^",
+      "replacement": ""
     },
     "ServiceNameToKebab": {
       "identifier": "chain",
@@ -60,6 +94,43 @@
         "InsertHyphen",
         "ToLowerInvariant"
       ]
+    },
+    "ServiceNameToNamespace": {
+      "identifier": "chain",
+      "steps": [
+        "ProtectNamespaceDots",
+        "ToKebabCase",
+        "ToTitleCase",
+        "RestoreNamespaceDots",
+        "RemoveNamespaceSeparators",
+        "PrefixNumericNamespaceSegments"
+      ]
+    },
+    "ProtectNamespaceDots": {
+      "identifier": "replace",
+      "pattern": "\\.",
+      "replacement": "-namespace-dot-"
+    },
+    "ToKebabCase": {
+      "identifier": "kebabCase"
+    },
+    "ToTitleCase": {
+      "identifier": "titleCase"
+    },
+    "RestoreNamespaceDots": {
+      "identifier": "replace",
+      "pattern": "-Namespace-Dot-",
+      "replacement": "."
+    },
+    "RemoveNamespaceSeparators": {
+      "identifier": "replace",
+      "pattern": "[-_\\s]+",
+      "replacement": ""
+    },
+    "PrefixNumericNamespaceSegments": {
+      "identifier": "replace",
+      "pattern": "(^|\\.)([0-9])",
+      "replacement": "${1}Service${2}"
     },
     "ReplaceSeparatorsWithHyphen": {
       "identifier": "replace",
@@ -73,11 +144,6 @@
     },
     "ToLowerInvariant": {
       "identifier": "lowerCaseInvariant"
-    },
-    "AppendDevLocalhost": {
-      "identifier": "replace",
-      "pattern": "^(.+)$",
-      "replacement": "$1.dev.localhost"
     }
   },
   "postActions": [

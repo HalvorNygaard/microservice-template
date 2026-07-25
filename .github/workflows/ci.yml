@@ -8,20 +8,197 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
-    env:
-      ConnectionStrings__postgresdb: Host=localhost;Port=5432;Database=migration_validation;Username=postgres;Password=development-only
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          dotnet-version: 10.0.x
-      - run: dotnet tool restore
-      - run: dotnet restore
-      - run: dotnet build MicroserviceTemplate.slnx -c Release --no-restore
-      - run: dotnet test --solution MicroserviceTemplate.slnx -c Release --no-build
-      - run: dotnet ef migrations has-pending-model-changes --project src/MicroserviceTemplate/MicroserviceTemplate.csproj --startup-project src/MicroserviceTemplate/MicroserviceTemplate.csproj --no-build --configuration Release
-      - run: dotnet publish src/MicroserviceTemplate/MicroserviceTemplate.csproj -c Release --no-build
-      - run: dotnet test --project tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj -c Release
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Restore tools
+        run: dotnet tool restore
+      - name: Restore packages
+        run: dotnet restore MicroserviceTemplate.slnx --configfile NuGet.Config -p:NuGetAudit=false
+      - name: Check formatting
+        run: dotnet format MicroserviceTemplate.slnx --verify-no-changes --no-restore
+      - name: Build
+        run: dotnet build MicroserviceTemplate.slnx -c Release --no-restore -p:ContinuousIntegrationBuild=true
+      - name: Run unit tests
+        run: dotnet test --project tests/MicroserviceTemplate.UnitTests/MicroserviceTemplate.UnitTests.csproj -c Release --no-build --no-restore
+      - name: Run integration tests
+        timeout-minutes: 7
+        run: dotnet test --project tests/MicroserviceTemplate.IntegrationTests/MicroserviceTemplate.IntegrationTests.csproj -c Release --no-build --no-restore
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: service-verification-${{ github.run_attempt }}
+          path: "**/TestResults/**"
+          if-no-files-found: ignore
+          retention-days: 14
+
+  template-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Restore tools
+        run: dotnet tool restore
+      - name: Restore packages
+        run: dotnet restore tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj --configfile NuGet.Config -p:NuGetAudit=false
+      - name: Build template validation
+        run: dotnet build tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj -c Release --no-restore -p:ContinuousIntegrationBuild=true
+      - name: Verify generated services
+        timeout-minutes: 15
+        run: dotnet test --project tests/TemplateValidation.Tests/TemplateValidation.Tests.csproj -c Release --no-build --no-restore
+      - name: Upload template diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: template-validation-${{ github.run_attempt }}
+          path: "**/TestResults/**"
+          if-no-files-found: ignore
+          retention-days: 14
+
+  delivery:
+    needs: [verify, template-validation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      DB_CONTAINER: template-ci-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+      API_CONTAINER: template-ci-api-${{ github.run_id }}-${{ github.run_attempt }}
+      CI_NETWORK: template-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      DB_VOLUME: template-ci-postgres-data-${{ github.run_id }}-${{ github.run_attempt }}
+      IMAGE: microservice-template:ci
+      ARCHIVE: ${{ github.workspace }}/.artifacts/container/microservice-template.tar.gz
+      ConnectionStrings__postgresdb: Host=localhost;Port=55432;Database=template_ci;Username=postgres;Password=development-only
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Restore tools
+        run: dotnet tool restore
+      - name: Restore packages
+        run: dotnet restore src/MicroserviceTemplate/MicroserviceTemplate.csproj --configfile NuGet.Config -p:NuGetAudit=false
+      - name: Build service
+        run: dotnet build src/MicroserviceTemplate/MicroserviceTemplate.csproj -c Release --no-restore -p:ContinuousIntegrationBuild=true
+      - name: Start isolated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/container .artifacts/delivery
+          docker network create "$CI_NETWORK"
+          docker run --detach --name "$DB_CONTAINER" --network "$CI_NETWORK" \
+            --publish 127.0.0.1:55432:5432 \
+            --volume "$DB_VOLUME:/var/lib/postgresql" \
+            --env POSTGRES_DB=template_ci --env POSTGRES_USER=postgres \
+            --env POSTGRES_PASSWORD=development-only postgres:18.3-alpine
+          for attempt in {1..60}; do
+            docker exec "$DB_CONTAINER" pg_isready -U postgres -d template_ci >/dev/null && break
+            test "$attempt" -lt 60
+            sleep 1
+          done
+      - name: Verify EF model and migration artifact idempotence
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet ef migrations has-pending-model-changes \
+            --project src/MicroserviceTemplate/MicroserviceTemplate.csproj \
+            --startup-project src/MicroserviceTemplate/MicroserviceTemplate.csproj \
+            --no-build --configuration Release
+          dotnet ef migrations bundle --project src/MicroserviceTemplate/MicroserviceTemplate.csproj \
+            --startup-project src/MicroserviceTemplate/MicroserviceTemplate.csproj \
+            --configuration Release --no-build --force --output .artifacts/delivery/efbundle
+          .artifacts/delivery/efbundle --connection "$ConnectionStrings__postgresdb"
+          docker exec "$DB_CONTAINER" psql -U postgres -d template_ci -Atc \
+            'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId"' \
+            > .artifacts/delivery/migrations-first.txt
+          test "$(wc -l < .artifacts/delivery/migrations-first.txt)" -ge 1
+          .artifacts/delivery/efbundle --connection "$ConnectionStrings__postgresdb"
+          docker exec "$DB_CONTAINER" psql -U postgres -d template_ci -Atc \
+            'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId"' \
+            > .artifacts/delivery/migrations-second.txt
+          cmp .artifacts/delivery/migrations-first.txt .artifacts/delivery/migrations-second.txt
+      - name: Build SDK-native container archive
+        run: >-
+          dotnet publish src/MicroserviceTemplate/MicroserviceTemplate.csproj
+          -c Release --no-restore /t:PublishContainer
+          -p:ContainerRepository=microservice-template -p:ContainerImageTag=ci
+          -p:ContainerArchiveOutputPath=${{ env.ARCHIVE }}
+      - name: Run production container checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker load --input "$ARCHIVE"
+          container_user="$(docker image inspect "$IMAGE" --format '{{.Config.User}}')"
+          test -n "$container_user"
+          test "$container_user" != "0"
+          test "$container_user" != "root"
+          docker run --detach --name "$API_CONTAINER" --network "$CI_NETWORK" \
+            --publish 127.0.0.1:18080:8080 \
+            --env ASPNETCORE_ENVIRONMENT=Production --env ASPNETCORE_HTTP_PORTS=8080 \
+            --env "ConnectionStrings__postgresdb=Host=$DB_CONTAINER;Port=5432;Database=template_ci;Username=postgres;Password=development-only" \
+            "$IMAGE"
+          for path in /alive /health; do
+            for attempt in {1..60}; do
+              curl --fail --silent --show-error "http://127.0.0.1:18080$path" && break
+              test "$attempt" -lt 60
+              sleep 1
+            done
+          done
+          for path in /openapi/v1.json /scalar/v1; do
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              "http://127.0.0.1:18080$path")"
+            test "$status" = "404"
+          done
+      - name: Collect delivery diagnostics
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          docker ps --all > .artifacts/delivery/docker-ps.txt
+          docker inspect "$API_CONTAINER" "$DB_CONTAINER" > .artifacts/delivery/docker-inspect.json 2>&1 || true
+          docker logs "$API_CONTAINER" > .artifacts/delivery/api.log 2>&1 || true
+          docker logs "$DB_CONTAINER" > .artifacts/delivery/postgres.log 2>&1 || true
+      - name: Clean exact delivery resources
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          failed=0
+          docker rm --force "$API_CONTAINER" "$DB_CONTAINER" >/dev/null 2>&1 || true
+          docker network rm "$CI_NETWORK" >/dev/null 2>&1 || true
+          docker volume rm "$DB_VOLUME" >/dev/null 2>&1 || true
+          docker image rm "$IMAGE" >/dev/null 2>&1 || true
+          docker container inspect "$API_CONTAINER" >/dev/null 2>&1 && failed=1
+          docker container inspect "$DB_CONTAINER" >/dev/null 2>&1 && failed=1
+          docker network inspect "$CI_NETWORK" >/dev/null 2>&1 && failed=1
+          docker volume inspect "$DB_VOLUME" >/dev/null 2>&1 && failed=1
+          docker image inspect "$IMAGE" >/dev/null 2>&1 && failed=1
+          exit "$failed"
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: delivery-diagnostics-${{ github.run_attempt }}
+          path: .artifacts/delivery/**
+          if-no-files-found: ignore
+          retention-days: 14

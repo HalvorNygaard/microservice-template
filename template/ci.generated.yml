@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
@@ -8,19 +9,59 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+
 jobs:
   verify:
+    name: ✅ Verify
     runs-on: ubuntu-latest
-    env:
-      ConnectionStrings__postgresdb: Host=localhost;Port=5432;Database=migration_validation;Username=postgres;Password=development-only
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Check out code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          dotnet-version: 10.0.x
-      - run: dotnet tool restore
-      - run: dotnet restore
-      - run: dotnet build -c Release --no-restore
-      - run: dotnet test --solution MicroserviceTemplate.slnx -c Release --no-build
-      - run: dotnet ef migrations has-pending-model-changes --project src/MicroserviceTemplate/MicroserviceTemplate.csproj --startup-project src/MicroserviceTemplate/MicroserviceTemplate.csproj --no-build --configuration Release
-      - run: dotnet publish src/MicroserviceTemplate/MicroserviceTemplate.csproj -c Release --no-build
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Restore packages
+        run: dotnet restore MicroserviceTemplate.slnx
+
+      - name: Check formatting
+        run: dotnet format MicroserviceTemplate.slnx --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build MicroserviceTemplate.slnx -c Release --no-restore
+
+      - name: Verify publish
+        run: dotnet publish src/MicroserviceTemplate/MicroserviceTemplate.csproj -c Release --no-build --no-restore
+
+      - name: Check database migrations
+        run: dotnet ef migrations has-pending-model-changes --project src/MicroserviceTemplate/MicroserviceTemplate.csproj --startup-project src/MicroserviceTemplate/MicroserviceTemplate.csproj --no-build --configuration Release
+
+      - name: Run unit tests
+        run: dotnet test --project tests/MicroserviceTemplate.UnitTests/MicroserviceTemplate.UnitTests.csproj -c Release --no-build --no-restore
+
+      - name: Run integration tests
+        run: dotnet test --project tests/MicroserviceTemplate.IntegrationTests/MicroserviceTemplate.IntegrationTests.csproj -c Release --no-build --no-restore
+
+      - name: Upload failure diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-results-${{ github.run_attempt }}
+          path: TestResults/**
+          if-no-files-found: ignore
+          retention-days: 14

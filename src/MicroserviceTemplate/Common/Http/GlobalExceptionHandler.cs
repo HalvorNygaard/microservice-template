@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
-namespace MicroserviceTemplate.Common.Http;
+namespace ModernMicroservice.Common.Http;
 
 internal sealed class GlobalExceptionHandler(
     ILogger<GlobalExceptionHandler> logger,
@@ -25,39 +24,28 @@ internal sealed class GlobalExceptionHandler(
                 StatusCodes.Status400BadRequest,
                 "Invalid Request",
                 "The request is invalid.",
-                "Validation",
                 "Request.Invalid"), LogLevel.Warning),
-            TimeoutException => (CreateProblemDetails(
-                StatusCodes.Status504GatewayTimeout,
-                "Gateway Timeout",
-                "The server timed out while processing the request.",
-                "Request",
-                "Request.Timeout"), LogLevel.Warning),
-            DbUpdateConcurrencyException => (CreateProblemDetails(
-                StatusCodes.Status409Conflict,
-                "Concurrency Conflict",
-                "The record was modified by another user. Please try again.",
-                "Conflict",
-                "Resource.ConcurrencyConflict"), LogLevel.Warning),
             _ => (CreateProblemDetails(
                 StatusCodes.Status500InternalServerError,
                 "An unexpected error occurred",
                 "An error occurred while processing your request.",
-                "Failure",
                 "Server.Error"), LogLevel.Error)
         };
 
-        logger.ExceptionHandled(
-            logLevel,
-            exception,
-            exception.GetType().Name,
-            httpContext.TraceIdentifier,
-            httpContext.Request.Path.Value ?? "/");
+        if (logger.IsEnabled(logLevel))
+        {
+            logger.ExceptionHandled(
+                logLevel,
+                exception,
+                exception.GetType().Name,
+                httpContext.TraceIdentifier,
+                httpContext.Request.Path.Value ?? "/");
+        }
 
         int statusCode = problemDetails.Status ?? StatusCodes.Status500InternalServerError;
-        string errorType = problemDetails.Extensions["errorType"]?.ToString() ?? "Unknown";
-        GlobalExceptionHandlerObservability.RecordExceptionHandled(statusCode, errorType);
-        GlobalExceptionHandlerObservability.EnrichCurrentActivity(statusCode, errorType);
+        string errorCategory = ApiProblemTypes.ErrorCategoryFor(statusCode);
+        GlobalExceptionHandlerObservability.RecordExceptionHandled(statusCode, errorCategory);
+        GlobalExceptionHandlerObservability.EnrichCurrentActivity(statusCode, errorCategory);
 
         httpContext.Response.StatusCode = statusCode;
         return await problemDetailsService.TryWriteAsync(new ProblemDetailsContext
@@ -72,8 +60,7 @@ internal sealed class GlobalExceptionHandler(
         int statusCode,
         string title,
         string detail,
-        string errorType,
-        string errorCode)
+        string code)
     {
         return new ProblemDetails
         {
@@ -82,8 +69,7 @@ internal sealed class GlobalExceptionHandler(
             Detail = detail,
             Extensions =
             {
-                ["errorType"] = errorType,
-                ["errorCode"] = errorCode
+                ["code"] = code
             }
         };
     }

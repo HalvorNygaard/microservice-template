@@ -2,30 +2,25 @@ using Aspire.Npgsql.EntityFrameworkCore.PostgreSQL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 
-namespace MicroserviceTemplate.Infrastructure.Data;
+namespace ModernMicroservice.Infrastructure.Data;
 
-public static class DataExtensions
+internal static class DataExtensions
 {
-    public static IHostApplicationBuilder AddApplicationData(this IHostApplicationBuilder builder)
+    internal static IHostApplicationBuilder AddApplicationData(this IHostApplicationBuilder builder)
     {
-        builder.AddNpgsqlDbContext<ApplicationDbContext>("postgresdb", configureDbContextOptions: options =>
-        {
-            options.EnableDetailedErrors(builder.Environment.IsDevelopment());
-            options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
-
-            options.UseNpgsql(npgsqlOptions =>
+        builder.AddNpgsqlDbContext<ApplicationDbContext>(
+            "postgresdb",
+            settings => settings.DisableRetry = true,
+            options =>
             {
-                npgsqlOptions.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(30),
-                    errorCodesToAdd: null);
+                options.EnableDetailedErrors(builder.Environment.IsDevelopment());
+                options.EnableSensitiveDataLogging(builder.Environment.IsDevelopment());
             });
-        });
 
         return builder;
     }
 
-    public static async Task ConfigureDevAsync(this WebApplication app)
+    internal static async Task ConfigureDevAsync(this WebApplication app)
     {
         if (!app.Environment.IsDevelopment())
         {
@@ -35,7 +30,7 @@ public static class DataExtensions
         await app.EnsureDatabaseMigrationsAsync();
     }
 
-    public static async Task EnsureDatabaseMigrationsAsync(this WebApplication app)
+    private static async Task EnsureDatabaseMigrationsAsync(this WebApplication app)
     {
         await using var scope = app.Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

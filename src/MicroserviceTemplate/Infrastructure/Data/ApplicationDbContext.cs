@@ -1,9 +1,10 @@
-using MicroserviceTemplate.Features.Tasks;
+using ModernMicroservice.Features.Tasks;
+using ModernMicroservice.Features.Tasks.Internal.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-namespace MicroserviceTemplate.Infrastructure.Data;
+namespace ModernMicroservice.Infrastructure.Data;
 
-public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
+internal sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {
     internal DbSet<TaskItem> Tasks => Set<TaskItem>();
 
@@ -11,6 +12,6 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        modelBuilder.ApplyConfiguration(new TaskItemConfiguration());
     }
 }

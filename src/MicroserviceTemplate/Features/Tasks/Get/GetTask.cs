@@ -1,11 +1,11 @@
-using MicroserviceTemplate.Common.Http;
-using MicroserviceTemplate.Infrastructure.Data;
+using ModernMicroservice.Common.Http;
+using ModernMicroservice.Infrastructure.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-namespace MicroserviceTemplate.Features.Tasks.Get;
+namespace ModernMicroservice.Features.Tasks.Get;
 
-public sealed class GetTask
+internal sealed class GetTask
 {
     private GetTask() { }
 
@@ -14,7 +14,8 @@ public sealed class GetTask
             .WithName("GetTask")
             .WithSummary("Get a task")
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesCommonProblems();
+            .ProducesCommonProblems()
+            .WithRequestTimeout(ApplicationRequestTimeouts.ApiPolicy);
 
     internal static async Task<Results<Ok<TaskRepresentation>, ProblemHttpResult>> Handle(
         Guid id,

@@ -1,8 +1,9 @@
-namespace MicroserviceTemplate.Common.Http;
+namespace ModernMicroservice.Common.Http;
 
-public static class EndpointMetadataExtensions
+internal static class EndpointMetadataExtensions
 {
-    public static RouteHandlerBuilder ProducesCommonProblems(this RouteHandlerBuilder builder) =>
+    internal static RouteHandlerBuilder ProducesCommonProblems(this RouteHandlerBuilder builder) =>
         builder
+            .ProducesProblem(StatusCodes.Status504GatewayTimeout)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 }

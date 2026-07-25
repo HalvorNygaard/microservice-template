@@ -1,16 +1,14 @@
 using System.Linq.Expressions;
 
-namespace MicroserviceTemplate.Features.Tasks;
+namespace ModernMicroservice.Features.Tasks;
 
 public sealed record TaskRepresentation(
     Guid Id,
     string Title,
     string Description,
     TaskItemStatus Status,
-    DateTimeOffset? DueDate,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt,
-    Guid Version);
+    DateTimeOffset UpdatedAt);
 
 internal static class TaskMappings
 {
@@ -19,18 +17,14 @@ internal static class TaskMappings
         task.Title,
         task.Description,
         task.Status,
-        task.DueDate,
         task.CreatedAt,
-        task.UpdatedAt,
-        task.Version);
+        task.UpdatedAt);
 
     internal static TaskRepresentation ToRepresentation(this TaskItem task) => new(
         task.Id,
         task.Title,
         task.Description,
         task.Status,
-        task.DueDate,
         task.CreatedAt,
-        task.UpdatedAt,
-        task.Version);
+        task.UpdatedAt);
 }

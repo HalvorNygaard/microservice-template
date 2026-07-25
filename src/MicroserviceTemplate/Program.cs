@@ -1,19 +1,14 @@
-using System.Text.Json.Serialization;
-using MicroserviceTemplate.Common.Http;
-using MicroserviceTemplate.Configurations.Setup;
-using MicroserviceTemplate.Features.Tasks;
-using MicroserviceTemplate.Infrastructure.Data;
+using ModernMicroservice.Common.Http;
+using ModernMicroservice.Configurations.Setup;
+using ModernMicroservice.Features.Tasks;
+using ModernMicroservice.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.ConfigureHttpJsonOptions(options =>
-{
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-});
 
 builder.Services.AddOpenApi();
 builder.Services.AddValidation();
 builder.Services.AddApplicationProblemDetails();
+builder.Services.AddApplicationRequestTimeouts(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.AddMicroserviceDefaults();

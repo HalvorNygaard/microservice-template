@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace MicroserviceTemplate.Features.Tasks.Internal.Persistence;
+namespace ModernMicroservice.Features.Tasks.Internal.Persistence;
 
 internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
 {
@@ -13,10 +13,5 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(task => task.Status).IsRequired().HasConversion<string>();
         builder.Property(task => task.CreatedAt).IsRequired();
         builder.Property(task => task.UpdatedAt).IsRequired();
-        builder.Property(task => task.Version).IsRequired().IsConcurrencyToken();
-
-        builder.HasIndex(task => task.Status);
-        builder.HasIndex(task => task.DueDate);
-        builder.HasIndex(task => new { task.CreatedAt, task.Id }).IsDescending();
     }
 }
